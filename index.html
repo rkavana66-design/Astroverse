@@ -1,0 +1,742 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ExoMind 3D: The AI Exoplanet Laboratory</title>
+<meta name="description" content="Build exoplanets in 3D, explore the Solar System and star life cycles, and see how machine learning predicts habitable worlds. Free for students.">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🪐</text></svg>">
+<style>
+  :root { --bg:#070a14; --panel:#0f1424; --card:#151b30; --line:#252d47; --text:#e8ebf5; --muted:#8e97b4; --accent:#4de0c0; --warm:#ffb454; }
+  * { box-sizing:border-box; }
+  html, body { height:100%; margin:0; }
+  body { display:grid; grid-template-columns:370px 1fr; background:var(--bg); color:var(--text); font-family:system-ui,-apple-system,"Segoe UI",sans-serif; }
+  aside { background:var(--panel); border-right:1px solid var(--line); padding:22px 20px; overflow-y:auto; }
+  h1 { font-size:1.3rem; margin:0; letter-spacing:.01em; }
+  .tag { color:var(--muted); font-size:.82rem; margin:2px 0 18px; }
+  h2 { font-size:.72rem; letter-spacing:.12em; color:var(--muted); margin:18px 0 10px; font-weight:600; }
+  .control { margin-bottom:14px; }
+  .row { display:flex; justify-content:space-between; align-items:center; font-size:.88rem; margin-bottom:5px; }
+  .badge { background:#0b2a2a; color:var(--accent); border:1px solid #1d5a52; border-radius:999px; padding:2px 10px; font-size:.8rem; font-variant-numeric:tabular-nums; }
+  input[type=range] { width:100%; accent-color:var(--accent); cursor:pointer; }
+  .presets { display:flex; gap:8px; }
+  .presets button { flex:1; padding:9px 0; background:var(--card); color:var(--text); border:1px solid var(--line); border-radius:8px; font-size:.88rem; cursor:pointer; transition:border-color .15s, background .15s; }
+  .presets button:hover, .presets button:focus-visible { border-color:var(--accent); background:#1a2340; outline:none; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:14px 16px; }
+  #classLabel { font-size:1.35rem; font-weight:700; margin:0 0 10px; }
+  .bar { height:10px; background:#0b0f1d; border-radius:6px; overflow:hidden; }
+  .bar > div { height:100%; width:0; transition:width .3s, background .3s; }
+  .meta { display:flex; justify-content:space-between; font-size:.82rem; color:var(--muted); margin-top:8px; }
+  #pathText { font-size:.76rem; color:var(--muted); margin-top:10px; line-height:1.45; }
+  #insight { font-size:.9rem; line-height:1.55; margin:0; max-width:62ch; }
+  #insight b { color:var(--warm); }
+  .follow { display:flex; gap:8px; align-items:center; font-size:.82rem; color:var(--muted); margin-top:16px; cursor:pointer; }
+  #status { color:var(--warm); font-size:.78rem; margin-top:8px; min-height:1em; }
+  main { position:relative; min-height:0; }
+  #scene { position:absolute; inset:0; }
+  #scene canvas { display:block; }
+  .tabs { display:flex; gap:4px; flex-wrap:wrap; margin-bottom:14px; }
+  .tabs button { flex:1; padding:7px 4px; background:var(--card); color:var(--muted); border:1px solid var(--line); border-radius:8px; font-size:.78rem; cursor:pointer; }
+  .tabs button.on { background:var(--accent); color:var(--bg); border-color:var(--accent); font-weight:600; }
+  select { background:var(--card); color:var(--text); border:1px solid var(--line); border-radius:8px; padding:5px 8px; font-size:.82rem; max-width:215px; }
+  #missionCard p { margin:8px 0 0; font-size:.86rem; line-height:1.5; }
+  .tab { display:none; } .tab.on { display:block; }
+  .list { display:grid; grid-template-columns:1fr 1fr; gap:6px; margin-bottom:12px; }
+  .list button, .opt, .btn { padding:8px 10px; background:var(--card); color:var(--text); border:1px solid var(--line); border-radius:8px; font-size:.85rem; cursor:pointer; text-align:left; }
+  .list button:hover, .opt:hover, .list button.on { border-color:var(--accent); }
+  .opt { display:block; width:100%; margin-bottom:8px; } .opt.right { border-color:#4cd37b; background:#12301f; } .opt.wrong { border-color:#ff5a2a; background:#341610; }
+  .btn { background:#0b2a2a; border-color:#1d5a52; color:var(--accent); text-align:center; width:100%; margin-top:10px; }
+  input[type=search] { width:100%; padding:9px 10px; background:var(--card); color:var(--text); border:1px solid var(--line); border-radius:8px; margin-bottom:10px; }
+  details { background:var(--card); border:1px solid var(--line); border-radius:8px; padding:9px 12px; margin-bottom:8px; font-size:.88rem; }
+  summary { cursor:pointer; font-weight:600; } details p { margin:8px 0 0; line-height:1.5; color:var(--muted); }
+  #quizBox p, #planetInfo, #starInfo { line-height:1.55; margin:0 0 10px; font-size:.9rem; }
+  @media (max-width:800px) { body { grid-template-columns:1fr; grid-template-rows:auto 65vh; } aside { border-right:0; border-bottom:1px solid var(--line); } }
+</style>
+</head>
+<body>
+<aside>
+  <h1>ExoMind 3D</h1>
+  <p class="tag">The AI Exoplanet Laboratory</p>
+  <div class="tabs">
+    <button class="on" data-tab="lab">🧪 Lab</button><button data-tab="solar">🪐 Planets</button><button data-tab="stars">⭐ Stars</button><button data-tab="quiz">🎯 Quiz</button><button data-tab="help">❓ Help</button>
+  </div>
+  <div class="tab on" id="tab-lab">
+    <div class="card" id="missionCard" style="margin-bottom:16px">
+      <div class="row" style="margin:0"><b>🚀 Mission</b><select id="missionSel" aria-label="Choose a mission"></select></div>
+      <p id="missionGoal"></p>
+      <p id="missionStatus" style="font-weight:600"></p>
+      <p id="hintText" style="color:var(--muted)"></p>
+      <div class="row" style="margin:10px 0 0"><button class="spreset" id="hintBtn" style="background:var(--card);color:var(--text);border:1px solid var(--line);border-radius:8px;padding:6px 10px;cursor:pointer">💡 Hint</button><span id="missionProg" class="badge"></span></div>
+    </div>
+
+  <div class="control"><div class="row"><label for="distance">Distance from star</label><span class="badge" id="distanceVal">1.00 AU</span></div>
+    <input type="range" id="distance" min="0.1" max="5" step="0.01" value="1"></div>
+  <div class="control"><div class="row"><label for="mass">Planet mass</label><span class="badge" id="massVal">1.00 M⊕</span></div>
+    <input type="range" id="mass" min="0.1" max="10" step="0.01" value="1"></div>
+  <div class="control"><div class="row"><label for="ghg">Greenhouse gases</label><span class="badge" id="ghgVal">20%</span></div>
+    <input type="range" id="ghg" min="0" max="100" step="1" value="20"></div>
+
+  <h2>PLANETARY PRESETS</h2>
+  <div class="presets">
+    <button data-d="1" data-m="1" data-g="20">🌍 Earth</button>
+    <button data-d="1.52" data-m="0.107" data-g="5">🔴 Mars</button>
+    <button data-d="0.72" data-m="0.815" data-g="100">🟠 Venus</button>
+  </div>
+
+  <h2>🧠 AI LAB READOUT</h2>
+  <div class="card">
+    <p id="classLabel">—</p>
+    <div class="bar"><div id="scoreBar"></div></div>
+    <div class="meta"><span>Habitability <b id="scoreText">0%</b></span><span id="tempText"></span></div>
+    <div id="pathText"></div>
+  </div>
+
+  <h2>📖 SCIENCE ACADEMY INSIGHT</h2>
+  <div class="card"><p id="insight"></p></div>
+
+  <label class="follow"><input type="checkbox" id="follow" checked> Camera follows the planet</label>
+  </div>
+
+  <div class="tab" id="tab-solar">
+    <h2>🪐 SOLAR SYSTEM EXPLORER</h2>
+    <div class="list" id="planetList"></div>
+    <div class="card"><p id="planetInfo">Click a planet in the 3D view, or pick one above. Sizes and distances are not to scale.</p></div>
+    <button class="btn" id="toLab" hidden>🧪 Test this planet in the Lab</button>
+  </div>
+
+  <div class="tab" id="tab-stars">
+    <h2>⭐ STAR LIFE-CYCLE SIMULATOR</h2>
+    <div class="control"><div class="row"><label for="smass">Star mass</label><span class="badge" id="smassVal"></span></div><input type="range" id="smass" min="0.1" max="50" step="0.1" value="1"></div>
+    <div class="control"><div class="row"><label for="sage">Life stage (birth → death)</label><span class="badge" id="sageVal"></span></div><input type="range" id="sage" min="0" max="100" step="1" value="50"></div>
+    <div class="presets" style="margin-bottom:12px">
+      <button class="spreset" data-m="1" data-a="50">☀️ Sun-like</button><button class="spreset" data-m="0.2" data-a="50">🔴 Red dwarf</button><button class="spreset" data-m="25" data-a="50">💥 Massive</button>
+    </div>
+    <div class="card"><p id="starClass" style="font-weight:700;margin:0 0 8px"></p><p id="starInfo"></p></div>
+  </div>
+
+  <div class="tab" id="tab-quiz"><h2>🎯 SPACE QUIZ</h2><div class="card" id="quizBox"></div></div>
+
+  <div class="tab" id="tab-help">
+    <h2>❓ DOUBT-CLEARING HELPER</h2>
+    <input type="search" id="faqSearch" placeholder="Search a word or doubt (e.g. AU, black hole)…">
+    <div id="faqList"></div>
+  </div>
+  <div id="status"></div>
+</aside>
+<main><div id="scene"></div></main>
+
+<script>
+/* =====================================================================
+   HOW THE DATA FLOWS
+   slider / preset click -> update() -> readSliders()
+        -> analyze()   physics (temperature) + decision tree  -> "result" object
+        -> updateUI()  text, badges, readout, Science Academy card
+        -> setTargets() stores WHICH look the planet should morph toward
+   animate() (60x/second) then eases the Three.js mesh toward those targets,
+   so colors, size and glow morph smoothly instead of snapping.
+   The UI half needs no Three.js, so the sidebar works even if the CDN fails.
+   ===================================================================== */
+
+/* ---------- 1. PHYSICS + DECISION TREE ---------- */
+const HZ_INNER = 0.8, HZ_OUTER = 1.5;       // Goldilocks zone edges in AU (also drawn as the green ring)
+
+/* ---------- ML MODEL (trained in Python, pasted from exoplanet_tree.js) ----------
+   Every number below was LEARNED by scikit-learn's DecisionTreeClassifier (max_depth=3).
+   Do not edit by hand: re-run train_exoplanet_model.py and paste the new function. */
+// Auto-generated by train_exoplanet_model.py (data: NASA, test accuracy 98.8%)
+// Returns the class (0 Icy, 1 Habitable, 2 Lava) and each class's probability from the leaf's training samples.
+function mlPredict(mass_earth, distance_au, greenhouse_pct) {
+  if (distance_au <= 1.03) {
+    if (distance_au <= 0.8) {
+      return { cls: 2, probs: [0.000, 0.000, 1.000], path: "distance_au <= 1.03 AND distance_au <= 0.8" };
+    } else {
+      if (greenhouse_pct <= 23.84) {
+        return { cls: 1, probs: [0.000, 1.000, 0.000], path: "distance_au <= 1.03 AND distance_au > 0.8 AND greenhouse_pct <= 23.84" };
+      } else {
+        return { cls: 2, probs: [0.000, 0.000, 1.000], path: "distance_au <= 1.03 AND distance_au > 0.8 AND greenhouse_pct > 23.84" };
+      }
+    }
+  } else {
+    if (greenhouse_pct <= 57.8) {
+      if (distance_au <= 2.23) {
+        return { cls: 1, probs: [0.111, 0.815, 0.074], path: "distance_au > 1.03 AND greenhouse_pct <= 57.8 AND distance_au <= 2.23" };
+      } else {
+        return { cls: 0, probs: [1.000, 0.000, 0.000], path: "distance_au > 1.03 AND greenhouse_pct <= 57.8 AND distance_au > 2.23" };
+      }
+    } else {
+      if (distance_au <= 2.22) {
+        return { cls: 2, probs: [0.000, 0.000, 1.000], path: "distance_au > 1.03 AND greenhouse_pct > 57.8 AND distance_au <= 2.22" };
+      } else {
+        return { cls: 0, probs: [0.500, 0.500, 0.000], path: "distance_au > 1.03 AND greenhouse_pct > 57.8 AND distance_au > 2.22" };
+      }
+    }
+  }
+}
+
+function analyze({ distance: d, mass: m, ghg: g }) {
+  // PHYSICS: equilibrium temperature falls with sqrt(distance) (inverse-square starlight).
+  // 278 K at 1 AU for a Sun-like star.
+  const baseTemp = 278 / Math.sqrt(d);
+
+  // Greenhouse warming needs an atmosphere. Heavy planets keep more of it; a tiny planet keeps almost none.
+  const retention = m < 0.3 ? 0.05 : Math.min(1.2, 0.4 + 0.6 * Math.sqrt(m));
+  const temp = baseTemp + (g / 100) * 150 * retention;      // greenhouse slider scales the extra heat
+
+  // Generic "Earth-likeness" from temperature and mass (bell curves), used for the score.
+  const tScore = Math.exp(-0.5 * Math.pow((temp - 288) / 30, 2));
+  const mScore = Math.exp(-0.5 * Math.pow(Math.log(m / 1.2) / 0.9, 2));
+  const base = 100 * tScore * (0.6 + 0.4 * mScore);
+
+  const inRing = d >= HZ_INNER && d <= HZ_OUTER;
+  let cls, label, score, path;
+
+  // Branches 1-2 are structural physics rules (a tiny world can't hold air; a huge one grabs gas).
+  // For everything else, the TRAINED decision tree decides the climate class.
+  if (m < 0.3) {
+    cls = "rock";  label = "Airless Barren Rock";  score = Math.min(base, 8);
+    path = `mass ${m.toFixed(2)} < 0.3 → atmosphere escapes → ROCK (physics rule)`;
+  } else if (m > 8.0) {
+    cls = "gas";   label = "Gas Giant";            score = Math.min(base, 5);
+    path = `mass ${m.toFixed(1)} > 8.0 → runaway accretion → GAS GIANT (physics rule)`;
+  } else {
+    // ML INFERENCE: sliders go in as features, the tree walks its if/else thresholds to a leaf.
+    const ml = mlPredict(m, d, g);                       // -> { cls: 0|1|2, probs: [...], path: "..." }
+    cls   = ["ice", "hab", "lava"][ml.cls];              // 0 Icy, 1 Habitable, 2 Lava
+    label = ["Frozen Ice World", "Habitable Earth-like", "Lava Wasteland"][ml.cls];
+    score = ml.probs[1] * 100;                           // habitability score = P(habitable) at that leaf
+    path  = `ML tree leaf: ${ml.path}`;
+  }
+  score = Math.round(score);
+  return { cls, label, score, temp, path, d, m, g, inRing };
+}
+
+/* Short physics explanations shown in the Science Academy card. */
+function insightText(r) {
+  const C = Math.round(r.temp - 273);
+  switch (r.cls) {
+    case "rock": return `<b>Atmospheric escape.</b> At just ${r.m.toFixed(2)} Earth masses, gravity can't hold gas: fast-moving molecules reach escape velocity and drift into space. With no air there is no greenhouse effect, no weather and no erosion, so impact craters last billions of years, like on our Moon.`;
+    case "gas":  return `<b>Runaway gas accretion.</b> Past roughly 8 Earth masses a rocky core's gravity pulls in hydrogen and helium faster and faster, snowballing into a giant. Fast rotation stretches the cloud tops into the swirling bands you see, like Jupiter's.`;
+    case "hab":  return `<b>The Goldilocks zone.</b> At ${r.d.toFixed(2)} AU the surface sits near ${C} °C, where liquid water can exist. A modest greenhouse (${r.g}%) warms the planet, as Earth's atmosphere does by about 33 °C. Water plus warmth is why you see oceans and vegetation.`;
+    case "lava": return r.d >= 0.97
+      ? `<b>Runaway greenhouse effect.</b> Thick, heat-trapping gas stops thermal radiation from escaping to space, so the surface keeps heating to about ${C} °C. Oceans boil away, the steam adds more greenhouse gas, and rock melts. This is what happened to Venus.`
+      : `<b>Thermal radiation overload.</b> At only ${r.d.toFixed(2)} AU starlight is ${(1 / (r.d * r.d)).toFixed(1)}× stronger than at Earth. The surface heats to about ${C} °C and glows, radiating the extra energy as infrared light and melting the crust into lava.`;
+    case "ice":  return `<b>Planetary glaciation.</b> At ${r.d.toFixed(2)} AU starlight is only ${(1 / (r.d * r.d)).toFixed(2)}× Earth's, so the surface drops to about ${C} °C. Water freezes, and bright ice reflects even more light back to space. This ice-albedo feedback cools the planet further.`;
+    default:     return `<b>A fragile balance.</b> The planet is in the habitable zone, but a greenhouse of ${r.g}% is outside the 10–30% sweet spot. The surface (${C} °C) is ${r.temp > 288 ? "too warm: too much trapped heat" : "too cold: too little heat trapped"}. Try moving the greenhouse slider toward 20%.`;
+  }
+}
+
+/* ---------- 2. UI WIRING ---------- */
+const $ = id => document.getElementById(id);
+const COLORS = { rock:"#b0b4bd", gas:"#e0a868", hab:"#4cd37b", lava:"#ff5a2a", ice:"#7cc4ff", marginal:"#ffd166" };
+let sceneReady = false, target = null;      // target = what the 3D planet should morph toward
+
+function readSliders() {
+  return { distance: +$("distance").value, mass: +$("mass").value, ghg: +$("ghg").value };
+}
+
+function updateUI(s, r) {
+  $("distanceVal").textContent = s.distance.toFixed(2) + " AU";
+  $("massVal").textContent     = s.mass.toFixed(2) + " M⊕";
+  $("ghgVal").textContent      = s.ghg + "%";
+  $("classLabel").textContent  = r.label;
+  $("classLabel").style.color  = COLORS[r.cls];
+  $("scoreText").textContent   = r.score + "%";
+  $("scoreBar").style.width    = r.score + "%";
+  $("scoreBar").style.background = COLORS[r.cls];
+  $("tempText").textContent    = Math.round(r.temp) + " K (" + Math.round(r.temp - 273) + " °C)";
+  $("pathText").textContent    = "Decision path: " + r.path;
+  $("insight").innerHTML       = insightText(r);
+}
+
+// Turn the classifier result into "morph weights" the 3D code eases toward.
+function setTargets(s, r) {
+  const clamp = (v) => Math.max(0, Math.min(1, v));
+  const w = { rock:0, gas:0, hab:0, lava:0, ice:0 };
+  if (r.cls === "marginal") {                 // blend by temperature: warmer -> lava tint, colder -> ice tint
+    const hot = clamp((r.temp - 300) / 80), cold = clamp((275 - r.temp) / 60);
+    w.lava = hot; w.ice = cold; w.hab = 1 - Math.max(hot, cold);
+  } else w[r.cls] = 1;
+  target = {
+    w,
+    radius: r.cls === "gas" ? 1.9 : 0.5 * Math.pow(s.mass, 0.27),   // gas giants swell; others scale with mass
+    atmo: r.cls === "rock" ? 0 : 0.08 + 0.25 * (s.ghg / 100),       // no air on a bare rock
+    orbit: 3 + s.distance * 5,                                       // AU -> scene units
+    inRing: r.inRing
+  };
+}
+
+/* ---------- MISSIONS: guided challenges that check the sliders against the ML result ---------- */
+// Each goal(s, r) receives the slider values (s) and the model's result (r) and returns true when the mission is met.
+const MISSIONS = [
+  { t:"Build an Earth twin", d:"Make a Habitable planet with a score of 90% or more and a mass between 0.5 and 2 Earth masses.",
+    goal:(s, r) => r.cls === "hab" && r.score >= 90 && s.mass >= .5 && s.mass <= 2,
+    hint:"Stay near 1 AU and keep the greenhouse under about 24%.", why:"Right distance plus a modest greenhouse keeps liquid water. That is the Goldilocks balance." },
+  { t:"Make a Venus", d:"Create a Lava Wasteland with a mass between 0.5 and 1.5 Earth masses and greenhouse of 80% or more.",
+    goal:(s, r) => r.cls === "lava" && s.mass >= .5 && s.mass <= 1.5 && s.ghg >= 80,
+    hint:"Move the planet closer than 0.8 AU and crank up the greenhouse.", why:"Too much starlight and trapped heat means a runaway greenhouse, like real Venus." },
+  { t:"Freeze a world", d:"Create a Frozen Ice World with a mass between 0.5 and 2 Earth masses.",
+    goal:(s, r) => r.cls === "ice" && s.mass >= .5 && s.mass <= 2,
+    hint:"Push the planet beyond 2.3 AU and keep the greenhouse low.", why:"Far from the star, starlight is weak, water freezes, and ice reflects even more light." },
+  { t:"Bare rock like the Moon", d:"Make an Airless Barren Rock.",
+    goal:(s, r) => r.cls === "rock", hint:"Shrink the planet's mass below 0.3 Earth masses.", why:"Weak gravity can't hold gas, so the atmosphere escapes into space." },
+  { t:"Grow a gas giant", d:"Make a Gas Giant.",
+    goal:(s, r) => r.cls === "gas", hint:"Raise the mass above 8 Earth masses.", why:"A heavy core captures hydrogen and helium faster and faster (runaway accretion)." },
+  { t:"Habitable, far from the star", d:"Make a Habitable planet at 1.5 AU or farther.",
+    goal:(s, r) => r.cls === "hab" && s.distance >= 1.5,
+    hint:"Go beyond 1.5 AU, then give it a greenhouse of roughly 30–55% to warm it back up.", why:"Greenhouse gases can push the habitable zone outward. Early Mars may have been warm this way." }
+];
+const done = new Set(); let curMission = 0;
+function refreshMissionMenu() {
+  $("missionSel").innerHTML = MISSIONS.map((m, i) => `<option value="${i}">${done.has(i) ? "✅" : (i + 1) + "."} ${m.t}</option>`).join("");
+  $("missionSel").value = curMission;
+  $("missionProg").textContent = `${done.size} / ${MISSIONS.length} done` + (done.size === MISSIONS.length ? " 🏆" : "");
+}
+function checkMission(s, r) {                 // runs on every slider move
+  const m = MISSIONS[curMission];
+  $("missionGoal").textContent = "🎯 " + m.d;
+  if (m.goal(s, r)) {
+    if (!done.has(curMission)) { done.add(curMission); refreshMissionMenu(); }
+    $("missionStatus").textContent = "✅ Mission complete! " + m.why;
+  } else {
+    $("missionStatus").textContent = `Not yet. Right now: ${r.label} (${r.score}%).`;
+  }
+}
+$("missionSel").onchange = () => { curMission = +$("missionSel").value; $("hintText").textContent = ""; update(); };
+$("hintBtn").onclick = () => { $("hintText").textContent = "💡 " + MISSIONS[curMission].hint; };
+refreshMissionMenu();
+
+function update() {                           // runs on EVERY slider move and preset click
+  const s = readSliders(), r = analyze(s);
+  updateUI(s, r);
+  setTargets(s, r);
+  checkMission(s, r);
+}
+
+["distance", "mass", "ghg"].forEach(id => {
+  $(id).addEventListener("input", update);
+  $(id).addEventListener("change", update);
+});
+document.querySelectorAll(".presets button").forEach(b => b.addEventListener("click", () => {
+  $("distance").value = b.dataset.d;          // snap sliders to real-world values...
+  $("mass").value = b.dataset.m;
+  $("ghg").value = b.dataset.g;
+  update();                                   // ...then run the whole pipeline once
+}));
+update();
+
+/* ---------- 2b. TABS, SOLAR SYSTEM, STARS, QUIZ, HELP ---------- */
+let mode = "lab", selected = null;          // mode decides which 3D scene is visible
+const hooks = {};                           // filled by init3D(): lets this UI code drive the 3D scene
+
+document.querySelectorAll(".tabs button").forEach(b => b.addEventListener("click", () => {
+  document.querySelectorAll(".tabs button, .tab").forEach(e => e.classList.remove("on"));
+  b.classList.add("on"); $("tab-" + b.dataset.tab).classList.add("on");
+  if (["lab", "solar", "stars"].includes(b.dataset.tab)) { mode = b.dataset.tab; hooks.setMode && hooks.setMode(mode); applyStar(); }
+}));
+
+/* --- Solar System data (au/mass are real; m and g also feed the Lab's sliders) --- */
+const PLANETS = [
+  { n:"Mercury", au:.39, r:.35, c:0x9a9a9a, m:.055, g:0,   f:"Smallest planet. With almost no air to hold heat, its day side reaches about 430 °C while the night side drops to −180 °C." },
+  { n:"Venus",   au:.72, r:.6,  c:0xe8c07a, m:.815, g:100, f:"Hottest planet (about 465 °C) thanks to a runaway greenhouse effect. It spins backwards, and one day lasts longer than its year." },
+  { n:"Earth",   au:1,   r:.65, c:0x2f7de1, m:1,    g:20,  f:"The only known world with life. Liquid oceans and a modest greenhouse effect keep the average near 15 °C. Watch its Moon circle it." },
+  { n:"Mars",    au:1.52,r:.45, c:0xc1583a, m:.107, g:5,   f:"Thin carbon-dioxide air and iron-oxide dust make it cold and red. Olympus Mons is the tallest known volcano, about 22 km high." },
+  { n:"Ceres",   au:2.77,r:.25,c:0x8a8580, m:.00016, g:0, f:"A dwarf planet and the largest object in the asteroid belt. About 940 km wide, it may hide salty water beneath its crust." },
+  { n:"Jupiter", au:5.2, r:1.6, c:0xd9a066, m:318,  g:50,  f:"A gas giant with 318 Earth masses. Its Great Red Spot is a storm wider than Earth that has raged for centuries." },
+  { n:"Saturn",  au:9.54,r:1.4, c:0xe6d3a3, m:95,   g:50,  f:"Less dense than water. Its bright rings are billions of chunks of ice and rock." },
+  { n:"Uranus",  au:19.2,r:1,   c:0x8fe0e8, m:14.5, g:50,  f:"An ice giant tilted about 98°, so it rolls around the Sun on its side." },
+  { n:"Neptune", au:30.1,r:1,   c:0x3a5fe0, m:17.1, g:50,  f:"Methane gives it a blue color. Its winds exceed 2,000 km/h, the fastest in the Solar System." },
+  { n:"Pluto",   au:39.5,r:.3, c:0xc9a98a, m:.0022, g:0, f:"A dwarf planet with a heart-shaped glacier of frozen nitrogen. One Pluto year lasts 248 Earth years." }
+];
+PLANETS.forEach((p, i) => {
+  const b = document.createElement("button"); b.textContent = p.n; b.onclick = () => selectPlanet(i); $("planetList").appendChild(b);
+});
+function selectPlanet(i) {                  // called by the buttons AND by clicking a planet in 3D
+  selected = i; const p = PLANETS[i];
+  document.querySelectorAll("#planetList button").forEach((b, k) => b.classList.toggle("on", k === i));
+  $("planetInfo").innerHTML = `<b>${p.n}</b> · ${p.au} AU from the Sun · ${p.m} Earth masses<br>${p.f}`;
+  $("toLab").hidden = false;
+  hooks.focus && hooks.focus(i);
+}
+$("toLab").onclick = () => {                // send this planet's real numbers to the Lab sliders (they clamp at their max)
+  const p = PLANETS[selected];
+  $("distance").value = p.au; $("mass").value = p.m; $("ghg").value = p.g;
+  update(); document.querySelector('[data-tab="lab"]').click();
+};
+
+/* --- Star life-cycle: mass sets temperature/color/lifetime; the age slider sets the stage --- */
+const SUN = { s:1, r:1, g:.84, b:.55, gl:1, gr:1, gg:1, gb:1 };     // default star look in Lab / Solar modes
+let starTarget = { ...SUN }; const starCur = { ...SUN };            // animate() eases starCur -> starTarget
+const TC = [[2500,1,.35,.2],[3700,1,.55,.3],[5200,1,.72,.42],[6000,1,.88,.6],[7500,1,.97,.9],[10000,.8,.88,1],[30000,.6,.72,1],[40000,.55,.65,1]];
+function tempRGB(T) {                       // blackbody-ish color: interpolate between key temperatures
+  let i = 1; while (i < TC.length - 1 && T > TC[i][0]) i++;
+  const a = TC[i - 1], b = TC[i], f = Math.max(0, Math.min(1, (T - a[0]) / (b[0] - a[0])));
+  return [1, 2, 3].map(k => a[k] + (b[k] - a[k]) * f);
+}
+function starState(M, age) {
+  const T = Math.min(40000, 5778 * Math.pow(M, .505));              // main-sequence surface temperature (K)
+  const life = 10 / Math.pow(M, 2.5);                               // lifetime in billions of years: heavy stars die young
+  const cls = T >= 30000 ? "O" : T >= 10000 ? "B" : T >= 7500 ? "A" : T >= 6000 ? "F" : T >= 5200 ? "G" : T >= 3700 ? "K" : "M";
+  const lifeTxt = life < 1 ? Math.round(life * 1000) + " million years" : Math.round(life * 10) / 10 + " billion years";
+  const base = .35 + .65 * Math.pow(M, .45), big = M >= 8;           // base = main-sequence size
+  const [r, g, b] = tempRGB(T);
+  let stage, info, v = { s: base, r, g, b, gl: 1, gr: r, gg: g, gb: b };
+  if (age < 5) {
+    stage = "Nebula collapsing into a protostar"; v = { s: base * 1.8, r: 1, g: .4, b: .2, gl: .45, gr: 1, gg: .4, gb: .2 };
+    info = "A cloud of gas and dust collapses under gravity and heats up. When the core reaches about 10 million K, hydrogen fusion ignites and a star is born.";
+  } else if (age < 80) {
+    stage = `${cls}-type main-sequence star`;
+    info = `Surface temperature about ${Math.round(T)} K. Fusion turns hydrogen into helium, and the outward pressure balances gravity. Expected lifetime: ${lifeTxt}. Blue stars burn hot and die young; red dwarfs sip fuel for trillions of years.`;
+  } else if (age < 90) {
+    stage = big ? "Red supergiant" : "Red giant"; v = { s: base * (big ? 1.6 : 2.2), r: 1, g: .38, b: .18, gl: .9, gr: 1, gg: .4, gb: .2 };
+    info = big ? "With hydrogen gone, the core fuses heavier and heavier elements, up to iron. The outer layers swell enormously and cool to a red glow."
+               : "Hydrogen in the core is used up, so the core shrinks and heats while the outer layers puff out and cool, turning the star red. Our Sun will do this in about 5 billion years.";
+  } else if (age < 93) {
+    stage = big ? "Supernova!" : "Planetary nebula";
+    v = big ? { s: base * 2, r: 1, g: 1, b: 1, gl: 1, gr: .8, gg: .9, gb: 1 } : { s: base * 2.5, r: .6, g: .95, b: .85, gl: .6, gr: .5, gg: .9, gb: .8 };
+    info = big ? "The iron core collapses in under a second, and the shockwave blasts the star apart. It scatters carbon, oxygen and iron: the atoms in your body were made this way."
+               : "The star sheds its outer layers into a glowing shell of gas, leaving the hot core behind.";
+  } else if (!big) {
+    stage = "White dwarf"; v = { s: .22, r: .85, g: .92, b: 1, gl: .6, gr: .85, gg: .92, gb: 1 };
+    info = "An Earth-sized, extremely dense leftover core. A teaspoon would weigh tonnes. It has no fusion and slowly cools over billions of years.";
+  } else if (M < 25) {
+    stage = "Neutron star"; v = { s: .1, r: .7, g: .85, b: 1, gl: 1, gr: .6, gg: .8, gb: 1 };
+    info = "The core is crushed into a ball only about 20 km wide, made almost entirely of neutrons. Some spin hundreds of times a second as pulsars.";
+  } else {
+    stage = "Black hole"; v = { s: .3, r: .02, g: .02, b: .02, gl: .35, gr: 1, gg: .5, gb: .1 };
+    info = "The core collapses so far that gravity wins completely. Inside the event horizon, not even light can escape. The glow is hot gas spiraling in.";
+  }
+  return { stage, info, v };
+}
+function applyStar() {
+  const M = +$("smass").value, a = +$("sage").value, st = starState(M, a);
+  $("smassVal").textContent = M.toFixed(1) + " M☉"; $("sageVal").textContent = a + "%";
+  $("starClass").textContent = st.stage; $("starInfo").textContent = st.info;
+  starTarget = mode === "stars" ? st.v : { ...SUN };      // only change the 3D star while the Stars tab is active
+}
+["smass", "sage"].forEach(id => $(id).addEventListener("input", applyStar));
+document.querySelectorAll(".spreset").forEach(b => b.onclick = () => { $("smass").value = b.dataset.m; $("sage").value = b.dataset.a; applyStar(); });
+applyStar();
+
+/* --- Quiz --- */
+const QUIZ = [
+  { q:"What is 1 AU?", o:["The distance light travels in a year", "The average Earth–Sun distance", "The size of the Sun"], a:1, e:"1 AU is about 150 million km. A light-year is a much bigger distance." },
+  { q:"Why is Venus hotter than Mercury, even though it is farther from the Sun?", o:["It has volcanoes", "It spins faster", "A thick CO₂ atmosphere causes a runaway greenhouse effect"], a:2, e:"Venus's dense CO₂ air traps heat, reaching about 465 °C." },
+  { q:"Which part of a decision tree gives the final answer?", o:["The leaf", "The root", "The slider"], a:0, e:"Leaves are the end points where the class label (like 'Lava Wasteland') is chosen." },
+  { q:"What does the habitable (Goldilocks) zone mean?", o:["Where planets are made of gold", "Distances where liquid water can exist on the surface", "The zone around a black hole"], a:1, e:"Not too hot, not too cold: water stays liquid." },
+  { q:"Why can a tiny planet like Mars keep so little air?", o:["Weak gravity lets gas escape", "It is too close to the Sun", "It has no moons"], a:0, e:"Lower escape velocity means gas molecules can drift off into space." },
+  { q:"Which star color is the hottest?", o:["Red", "Yellow", "Blue"], a:2, e:"Blue stars have surface temperatures above 10,000 K; red stars are under 4,000 K." },
+  { q:"What will the Sun become at the end of its life?", o:["A black hole", "A white dwarf", "A supernova"], a:1, e:"The Sun is too light for a supernova. It will end as a white dwarf." },
+  { q:"What is an exoplanet?", o:["A planet orbiting a star other than the Sun", "A planet with no atmosphere", "A moon of Jupiter"], a:0, e:"Thousands have been found, mostly by watching stars dim as planets pass in front." },
+  { q:"Which planet has the tallest known volcano, Olympus Mons?", o:["Earth", "Mars", "Venus"], a:1, e:"Olympus Mons on Mars is about 22 km high, nearly 3 times Mount Everest." },
+  { q:"What are Saturn's rings mostly made of?", o:["Chunks of ice and rock", "Hot gas", "Liquid water"], a:0, e:"Billions of ice and rock pieces, from dust grains to house-sized boulders." },
+  { q:"Why does Earth have seasons?", o:["Its axis is tilted", "Its distance from the Sun changes a lot", "The Moon blocks sunlight"], a:0, e:"The roughly 23.5° tilt changes how directly sunlight hits each half of the planet during the year." },
+  { q:"Why do craters last so long on the Moon?", o:["It is made of iron", "No air or water to erode them", "It is close to the Sun"], a:1, e:"With no weather, a crater can stay for billions of years." },
+  { q:"Which kind of star lives the longest?", o:["Blue giant", "Sun-like star", "Red dwarf"], a:2, e:"Red dwarfs burn fuel so slowly that they can shine for trillions of years." },
+  { q:"What does the green ring in the Lab show?", o:["The asteroid belt", "The habitable zone, 0.8 to 1.5 AU", "The planet's orbit speed"], a:1, e:"Inside it a planet can be warm enough for liquid water." },
+  { q:"What is the ice-albedo feedback?", o:["Ice reflects sunlight, which cools the planet even more", "Ice melts faster in the dark", "Ice traps heat like a blanket"], a:0, e:"More ice means more reflected sunlight, which means a colder planet and even more ice." },
+  { q:"Which of these is a dwarf planet?", o:["Mars", "Ceres", "Neptune"], a:1, e:"Ceres lives in the asteroid belt. Pluto is a dwarf planet too." }
+];
+let qi = 0, score = 0, deck = [];
+const newDeck = () => { deck = [...QUIZ].sort(() => Math.random() - .5).slice(0, 10); };   // 10 random questions per round
+newDeck();
+function showQ() {
+  const box = $("quizBox");
+  if (qi >= deck.length) {
+    box.innerHTML = `<p style="font-size:1.2rem;font-weight:700">Score: ${score} / ${deck.length}</p><p>${score >= 7 ? "Stellar work! 🌟" : score >= 4 ? "Good orbit! Review the Help tab and try again." : "Keep exploring the Lab and Planets tabs, then retry."}</p><button class="btn" id="again">Play again</button>`;
+    $("again").onclick = () => { qi = 0; score = 0; newDeck(); showQ(); }; return;
+  }
+  const q = deck[qi];
+  box.innerHTML = `<p><b>Question ${qi + 1} of ${deck.length}</b> · Score ${score}</p><p>${q.q}</p>` + q.o.map((t, i) => `<button class="opt" data-i="${i}">${t}</button>`).join("") + `<p id="qfb"></p>`;
+  box.querySelectorAll(".opt").forEach(btn => btn.onclick = () => {
+    const i = +btn.dataset.i; if (box.querySelector(".right")) return;      // already answered
+    if (i === q.a) score++;
+    box.querySelectorAll(".opt")[q.a].classList.add("right"); if (i !== q.a) btn.classList.add("wrong");
+    $("qfb").innerHTML = (i === q.a ? "✅ Correct! " : "❌ Not quite. ") + q.e + `<button class="btn" id="nextQ">${qi + 1 < deck.length ? "Next question" : "See score"}</button>`;
+    $("nextQ").onclick = () => { qi++; showQ(); };
+  });
+}
+showQ();
+
+/* --- Help: searchable glossary + common doubts --- */
+const FAQ = [
+  ["Star vs planet?", "A star makes its own light by nuclear fusion. A planet only reflects its star's light."],
+  ["What is an AU?", "Astronomical Unit: the average Earth–Sun distance, about 150 million km. Mars is 1.52 AU away."],
+  ["What is the Goldilocks (habitable) zone?", "The range of distances from a star where a planet can have liquid water. Here it is drawn from 0.8 to 1.5 AU."],
+  ["What is a greenhouse gas?", "Gases like CO₂, methane and water vapor trap heat. A little warms a planet nicely (Earth: about +33 °C). Too much causes a runaway greenhouse, like Venus."],
+  ["Why do planets orbit instead of falling into the Sun?", "They ARE falling, but they also move sideways fast, so they keep missing the Sun. That balance is an orbit."],
+  ["What is a light-year?", "The distance light travels in one year, about 9.46 trillion km. It measures distance, not time."],
+  ["What is an exoplanet?", "A planet that orbits a star other than our Sun. Thousands have been confirmed."],
+  ["What is atmospheric escape?", "Gas molecules moving faster than a planet's escape velocity drift into space. Small planets with weak gravity lose their air."],
+  ["What does 'Earth mass' mean?", "A unit of weight: 1 Earth mass is the mass of our planet. Jupiter is about 318 Earth masses."],
+  ["Why do stars have different colors?", "Color shows temperature. Blue stars are hottest, white and yellow are medium, and red stars are the coolest."],
+  ["What is a supernova?", "The explosive death of a very massive star. It leaves behind a neutron star or a black hole."],
+  ["What is a black hole?", "The leftover core of a huge star, with gravity so strong that nothing, not even light, can escape past its event horizon."],
+  ["Is Pluto a planet?", "Since 2006 it is a dwarf planet: it orbits the Sun but has not cleared other objects from its path."],
+  ["Why is Mars red?", "Its dust and rocks contain iron oxide, which is rust."],
+  ["What is a moon?", "A natural satellite that orbits a planet. Earth has one; Jupiter and Saturn have dozens each."],
+  ["Why do we have seasons?", "Earth's axis is tilted about 23.5°, so each hemisphere gets more direct sunlight at different times of year. Distance to the Sun is not the cause."],
+  ["What is the asteroid belt?", "A region between Mars and Jupiter full of rocky leftovers from the birth of the Solar System. Ceres is its largest member."],
+  ["Comet vs asteroid?", "Comets are icy and grow glowing tails when they near the Sun. Asteroids are mostly rock and metal."],
+  ["What is gravity?", "The pull between masses: more mass means stronger pull. It holds planets in orbit, keeps atmospheres in place and makes stars form."],
+  ["What is the Milky Way?", "Our home galaxy, with hundreds of billions of stars. The pale band of light you see on a dark night is its disk seen from inside."],
+  ["What is a pulsar?", "A fast-spinning neutron star that sweeps beams of radio waves across space like a lighthouse."],
+  ["How do we find exoplanets?", "Mostly by watching a star's brightness: when a planet crosses in front, the light dips slightly (the transit method). Planets can also make their star wobble."],
+  ["What is a decision tree (in AI)?", "A model that asks a series of yes/no questions (is mass < 0.3? is it inside the ring?) until it reaches an answer. This Lab's classifier works that way."]
+];
+function renderFaq(filter = "") {
+  const f = filter.toLowerCase();
+  $("faqList").innerHTML = FAQ.filter(([q, a]) => (q + a).toLowerCase().includes(f))
+    .map(([q, a]) => `<details><summary>${q}</summary><p>${a}</p></details>`).join("") || "<p style='color:var(--muted)'>No match. Try a shorter word.</p>";
+}
+$("faqSearch").addEventListener("input", e => renderFaq(e.target.value));
+renderFaq();
+
+/* ---------- 3. CDN LOADING WITH FALLBACKS ---------- */
+function loadScript(urls) {
+  return new Promise((ok, fail) => {
+    let i = 0;
+    (function next() {
+      if (i >= urls.length) return fail(new Error("CDN failed"));
+      const s = document.createElement("script");
+      s.src = urls[i++]; s.onload = ok; s.onerror = () => { s.remove(); next(); };
+      document.head.appendChild(s);
+    })();
+  });
+}
+loadScript([
+  "https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js",
+  "https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js",
+  "https://unpkg.com/three@0.128.0/build/three.min.js"
+]).then(() => loadScript([
+  "https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js",
+  "https://unpkg.com/three@0.128.0/examples/js/controls/OrbitControls.js"
+]).catch(() => {}))
+  .then(init3D)
+  .catch(e => { $("status").textContent = "3D engine failed to load. Check your connection; the lab readout still works."; console.error(e); });
+
+/* Tiny fallback controls (drag = rotate, wheel = zoom) used only if OrbitControls can't load. */
+function SimpleOrbit(cam, el, tgt) {
+  this.target = tgt;
+  let r, th, ph, down = false, lx = 0, ly = 0;
+  this.sync = () => { const off = cam.position.clone().sub(tgt); r = off.length(); th = Math.atan2(off.x, off.z); ph = Math.acos(off.y / r); };
+  this.sync();
+  el.addEventListener("pointerdown", e => { down = true; lx = e.clientX; ly = e.clientY; });
+  addEventListener("pointerup", () => down = false);
+  addEventListener("pointermove", e => { if (!down) return; th -= (e.clientX - lx) * .01; ph = Math.min(3, Math.max(.15, ph - (e.clientY - ly) * .01)); lx = e.clientX; ly = e.clientY; });
+  el.addEventListener("wheel", e => { e.preventDefault(); r = Math.min(80, Math.max(1.5, r * (1 + e.deltaY * .001))); }, { passive: false });
+  this.update = () => { cam.position.set(r * Math.sin(ph) * Math.sin(th), r * Math.cos(ph), r * Math.sin(ph) * Math.cos(th)).add(tgt); cam.lookAt(tgt); };
+}
+
+/* ---------- 4. THE 3D SCENE ---------- */
+function init3D() {
+  const box = $("scene");
+  const scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x02030a);
+  const camera = new THREE.PerspectiveCamera(50, 1, 0.1, 1000);
+  const renderer = new THREE.WebGLRenderer({ antialias: true });
+  renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+  box.appendChild(renderer.domElement);
+
+  // Camera starts near the planet's orbit so the planet is clearly visible.
+  camera.position.set(2, 1.5, 12);
+  let controls;
+  if (THREE.OrbitControls) { controls = new THREE.OrbitControls(camera, renderer.domElement); controls.enableDamping = true; controls.minDistance = 1.2; controls.maxDistance = 90; }
+  else controls = new SimpleOrbit(camera, renderer.domElement, new THREE.Vector3());
+
+  // view(): jump the camera to a position and point it at a target (used when switching tabs)
+  const view = (px, py, pz, tx, ty, tz) => { controls.target.set(tx, ty, tz); camera.position.set(px, py, pz); if (controls.sync) controls.sync(); controls.update(); };
+
+  /* --- Starry galaxy: uniform stars + a tinted, flattened "Milky Way" band --- */
+  const sp = [], sc = [], v = new THREE.Vector3(), c = new THREE.Color();
+  for (let i = 0; i < 3500; i++) {
+    const band = i > 1800;                                       // second group squashed into a band
+    v.set(Math.random() - .5, (Math.random() - .5) * (band ? .12 : 1), Math.random() - .5).normalize().multiplyScalar(400);
+    if (band) v.applyAxisAngle(new THREE.Vector3(1, 0, 0), 0.5);
+    sp.push(v.x, v.y, v.z);
+    band ? c.setHSL(0.6 + Math.random() * .15, .5, .6) : c.setHSL(Math.random() < .2 ? .08 : .6, .3, .85);
+    sc.push(c.r, c.g, c.b);
+  }
+  const sg = new THREE.BufferGeometry();
+  sg.setAttribute("position", new THREE.Float32BufferAttribute(sp, 3));
+  sg.setAttribute("color", new THREE.Float32BufferAttribute(sc, 3));
+  scene.add(new THREE.Points(sg, new THREE.PointsMaterial({ size: 1.6, sizeAttenuation: false, vertexColors: true })));
+
+  /* --- Star: canvas-painted "granulation" texture + additive glow sprite + point light --- */
+  function canvasTex(w, h, paint) { const cv = document.createElement("canvas"); cv.width = w; cv.height = h; paint(cv.getContext("2d"), w, h); return new THREE.CanvasTexture(cv); }
+  const starTex = canvasTex(256, 128, (g, w, h) => {
+    g.fillStyle = "#ffe2a8"; g.fillRect(0, 0, w, h);
+    for (let i = 0; i < 700; i++) {                                // random hot/cool blotches
+      g.fillStyle = `hsla(${25 + Math.random() * 30},100%,${55 + Math.random() * 40}%,.4)`;
+      g.beginPath(); g.arc(Math.random() * w, Math.random() * h, 2 + Math.random() * 9, 0, 6.3); g.fill();
+    }
+  });
+  const star = new THREE.Mesh(new THREE.SphereGeometry(1.5, 48, 48), new THREE.MeshBasicMaterial({ map: starTex }));
+  scene.add(star);
+  const glowTex = canvasTex(128, 128, (g) => {
+    const gr = g.createRadialGradient(64, 64, 0, 64, 64, 64);
+    gr.addColorStop(0, "rgba(255,220,140,.9)"); gr.addColorStop(.35, "rgba(255,160,50,.35)"); gr.addColorStop(1, "rgba(255,120,0,0)");
+    g.fillStyle = gr; g.fillRect(0, 0, 128, 128);
+  });
+  const glow = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex, blending: THREE.AdditiveBlending, depthWrite: false }));
+  glow.scale.set(13, 13, 1); scene.add(glow);
+  scene.add(new THREE.PointLight(0xfff1d6, 2.4, 0, 1));            // the star lights the planet
+  scene.add(new THREE.AmbientLight(0x334466, 0.5));
+
+  /* --- Goldilocks ring: flat glowing annulus from 0.8 to 1.5 AU (same AU->units formula as the orbit) --- */
+  const auToUnits = a => 3 + a * 5;
+  const ringMat = new THREE.MeshBasicMaterial({ color: 0x2dff8a, transparent: true, opacity: 0.22, side: THREE.DoubleSide, blending: THREE.AdditiveBlending, depthWrite: false });
+  const ring = new THREE.Mesh(new THREE.RingGeometry(auToUnits(HZ_INNER), auToUnits(HZ_OUTER), 128), ringMat);
+  ring.rotation.x = -Math.PI / 2; scene.add(ring);
+  [HZ_INNER, HZ_OUTER].forEach(a => {                              // thin bright torus edges
+    const t = new THREE.Mesh(new THREE.TorusGeometry(auToUnits(a), 0.03, 8, 160), new THREE.MeshBasicMaterial({ color: 0x6dffb0 }));
+    t.rotation.x = Math.PI / 2; scene.add(t);
+  });
+
+  /* --- Planet: dense sphere whose per-vertex colors we repaint every time the look changes --- */
+  const geo = new THREE.IcosahedronGeometry(1, 5), pos = geo.attributes.position, N = pos.count;
+  geo.setAttribute("color", new THREE.BufferAttribute(new Float32Array(N * 3), 3));
+  const mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.85 });
+  const planet = new THREE.Mesh(geo, mat);
+  scene.add(planet);
+  const atmoMat = new THREE.MeshBasicMaterial({ color: 0x66aaff, transparent: true, opacity: 0.2, side: THREE.BackSide });
+  planet.add(new THREE.Mesh(new THREE.SphereGeometry(1.12, 48, 48), atmoMat));
+
+  // Pre-compute terrain "ingredients" once per vertex so recoloring stays fast.
+  const nz = (x, y, z, f) => 0.5 + 0.25 * Math.sin(x * f + 1.3) * Math.cos(y * f * 1.1) + 0.25 * Math.sin(z * f * .9 + x * f * .5 + 2.1);
+  const craters = Array.from({ length: 30 }, () => ({ p: new THREE.Vector3(Math.random() - .5, Math.random() - .5, Math.random() - .5).normalize(), r: .08 + Math.random() * .22 }));
+  const cont = new Float32Array(N), crack = new Float32Array(N), crat = new Float32Array(N), band = new Float32Array(N);
+  for (let i = 0; i < N; i++) {
+    v.set(pos.getX(i), pos.getY(i), pos.getZ(i));
+    cont[i] = nz(v.x, v.y, v.z, 3.2);                              // continents
+    crack[i] = nz(v.x, v.y, v.z, 9);                               // lava cracks / ice fractures
+    band[i] = Math.sin(v.y * 11 + 1.8 * Math.sin(v.x * 4 + v.z * 3)) * .5 + .5;   // gas-giant swirls
+    let k = 0;
+    for (const cr of craters) { const t = v.distanceTo(cr.p) / cr.r; if (t < .8) k -= .35; else if (t < 1) k += .3; }
+    crat[i] = Math.max(-.5, Math.min(.4, k));                      // negative = dark crater floor, positive = bright rim
+  }
+
+  // The morph state: weights currently on screen (they ease toward target.w).
+  const cur = { rock: 0, gas: 0, hab: 1, lava: 0, ice: 0 };
+  let curRadius = 0.5, curAtmo = 0.2, dirty = true;
+
+  // Repaint all vertices as a weighted mix of five "looks". THIS is where physics -> pixels happens.
+  function recolor() {
+    const col = geo.attributes.color, w = cur;
+    for (let i = 0; i < N; i++) {
+      const c_ = cont[i], k_ = crack[i];
+      // Habitable: green land (continent noise high) or deep blue ocean
+      const land = c_ > .52, hr = land ? .2 + .1 * c_ : .1, hg = land ? .5 + .25 * c_ : .4 + .1 * c_, hb = land ? .25 : .85;
+      // Ice: white/blue crystal, with brighter fracture lines
+      const fr = Math.max(0, 1 - Math.abs(k_ - .5) * 10), ir = .62 + .3 * c_ + .1 * fr, ig = .8 + .15 * c_ + .1 * fr, ib = 1;
+      // Lava: dark crust, bright orange where |crack - .5| is tiny
+      const gl = Math.max(0, 1 - Math.abs(k_ - .5) * 9), lr = .16 + .84 * gl, lg = .04 + .3 * gl, lb = .02;
+      // Rock: gray, darker in crater floors, lighter on rims
+      const gy = .42 + .15 * c_ + crat[i] * .6, rr = gy, rg = gy * .98, rb = gy * .95;
+      // Gas giant: tan/brown bands
+      const b = band[i], gr = .55 + .35 * b, gg = .38 + .3 * b, gb = .25 + .2 * b;
+      col.setXYZ(i,
+        hr * w.hab + ir * w.ice + lr * w.lava + rr * w.rock + gr * w.gas,
+        hg * w.hab + ig * w.ice + lg * w.lava + rg * w.rock + gg * w.gas,
+        hb * w.hab + ib * w.ice + lb * w.lava + rb * w.rock + gb * w.gas);
+    }
+    col.needsUpdate = true;                                        // upload new colors to the GPU
+  }
+
+  /* --- Solar System group: 8 planets + orbit lines, hidden until the Planets tab is opened --- */
+  const solar = new THREE.Group(); solar.visible = false; scene.add(solar);
+  const sol = PLANETS.map((p, i) => {
+    const rad = 5 + i * 3.2;                                         // orbit radius in scene units (NOT to scale)
+    const mesh = new THREE.Mesh(new THREE.SphereGeometry(p.r, 32, 32), new THREE.MeshStandardMaterial({ color: p.c, roughness: .8 }));
+    solar.add(mesh);
+    if (p.n === "Saturn") {                                          // Saturn's rings
+      const rg = new THREE.Mesh(new THREE.RingGeometry(p.r * 1.4, p.r * 2.3, 64), new THREE.MeshBasicMaterial({ color: 0xcdb98a, side: THREE.DoubleSide, transparent: true, opacity: .8 }));
+      rg.rotation.x = Math.PI / 2.2; mesh.add(rg);
+    }
+    const pts = []; for (let k = 0; k < 128; k++) pts.push(new THREE.Vector3(Math.cos(k / 128 * 6.2832) * rad, 0, Math.sin(k / 128 * 6.2832) * rad));
+    solar.add(new THREE.LineLoop(new THREE.BufferGeometry().setFromPoints(pts), new THREE.LineBasicMaterial({ color: 0x33415f })));
+    return { mesh, rad, ang: Math.random() * 6.28, r: p.r };
+  });
+
+  // Earth's Moon (orbits Earth, not the Sun) and the asteroid belt (a ring of 700 tiny rocks around Ceres' orbit)
+  const moon = new THREE.Mesh(new THREE.SphereGeometry(.18, 16, 16), new THREE.MeshStandardMaterial({ color: 0xbbbbbb }));
+  solar.add(moon); const earth = sol[PLANETS.findIndex(p => p.n === "Earth")]; let moonAng = 0;
+  const beltR = 5 + PLANETS.findIndex(p => p.n === "Ceres") * 3.2, bp = [];
+  for (let k = 0; k < 700; k++) { const a = Math.random() * 6.2832, r = beltR + (Math.random() - .5) * 2.2; bp.push(Math.cos(a) * r, (Math.random() - .5) * .5, Math.sin(a) * r); }
+  const bg = new THREE.BufferGeometry(); bg.setAttribute("position", new THREE.Float32BufferAttribute(bp, 3));
+  solar.add(new THREE.Points(bg, new THREE.PointsMaterial({ color: 0x8c8c99, size: 1.6, sizeAttenuation: false })));
+
+  // Everything that belongs only to the Lab scene (hidden in other tabs)
+  const labObjs = [ring, planet, ...scene.children.filter(o => o.geometry && o.geometry.type === "TorusGeometry")];
+
+  hooks.setMode = m => {                                             // called by the tab buttons
+    labObjs.forEach(o => o.visible = m === "lab"); solar.visible = m === "solar";
+    selected = null; document.querySelectorAll("#planetList button").forEach(b => b.classList.remove("on"));
+    if (m === "lab")   view(2, 1.5, 12, planet.position.x, 0, planet.position.z);
+    if (m === "solar") view(0, 44, 58, 0, 0, 0);
+    if (m === "stars") view(0, 6, 22, 0, 0, 0);
+  };
+  hooks.focus = i => { const q = sol[i].mesh.position, r = sol[i].r; view(q.x + r * 4, q.y + r * 2, q.z + r * 5, q.x, q.y, q.z); };
+
+  // Click a planet in 3D: a raycaster fires a ray from the mouse into the scene and reports what it hits
+  const ray = new THREE.Raycaster(), mouse = new THREE.Vector2(); let downAt = null;
+  renderer.domElement.addEventListener("pointerdown", e => downAt = [e.clientX, e.clientY]);
+  renderer.domElement.addEventListener("pointerup", e => {
+    if (!downAt || mode !== "solar" || Math.hypot(e.clientX - downAt[0], e.clientY - downAt[1]) > 5) return;   // ignore drags
+    const b = renderer.domElement.getBoundingClientRect();
+    mouse.set(((e.clientX - b.left) / b.width) * 2 - 1, -((e.clientY - b.top) / b.height) * 2 + 1);
+    ray.setFromCamera(mouse, camera);
+    const hit = ray.intersectObjects(sol.map(p => p.mesh))[0];
+    if (hit) selectPlanet(sol.findIndex(p => p.mesh === hit.object));
+  });
+
+  /* --- resize --- */
+  function resize() { const w = box.clientWidth || 1, h = box.clientHeight || 1; renderer.setSize(w, h); camera.aspect = w / h; camera.updateProjectionMatrix(); }
+  addEventListener("resize", resize); resize();
+
+  /* --- animation loop: orbit, ease toward targets, repaint when needed --- */
+  let angle = 0; const prev = new THREE.Vector3(), delta = new THREE.Vector3(); let orbitR = 8;
+  function animate() {
+    requestAnimationFrame(animate);
+    if (target) {
+      // Ease each morph weight toward its target (8% per frame ≈ a smooth 0.5 s transition).
+      for (const k in cur) { const d = target.w[k] - cur[k]; if (Math.abs(d) > .002) { cur[k] += d * .08; dirty = true; } else cur[k] = target.w[k]; }
+      curRadius += (target.radius - curRadius) * .08;               // size morph (gas giants swell quickly)
+      curAtmo += (target.atmo - curAtmo) * .1;
+      orbitR += (target.orbit - orbitR) * .1;
+      if (dirty) { recolor(); dirty = false; }
+
+      planet.scale.setScalar(curRadius);
+      mat.emissive.setRGB(.7 * cur.lava, .14 * cur.lava, .02 * cur.lava);     // lava glows by itself
+      mat.roughness = .85 - .5 * cur.ice;                                      // ice is shinier
+      // Atmosphere tint: blue (habitable) / red haze (lava) / pale (ice) / tan (gas); thickness from greenhouse
+      atmoMat.color.setRGB(.4 + .6 * cur.lava + .5 * cur.ice + .5 * cur.gas, .67 - .3 * cur.lava + .25 * cur.ice, 1 - .8 * cur.lava - .5 * cur.gas);
+      atmoMat.opacity = curAtmo;
+      ringMat.opacity = target.inRing ? .38 : .2;                              // ring brightens when the planet is inside it
+    }
+    // Star morph: ease size/color/glow toward the Stars-tab target (physics -> pixels for the life-cycle)
+    for (const k in starCur) starCur[k] += (starTarget[k] - starCur[k]) * .07;
+    star.scale.setScalar(starCur.s); star.material.color.setRGB(starCur.r, starCur.g, starCur.b);
+    glow.material.color.setRGB(starCur.gr, starCur.gg, starCur.gb); glow.material.opacity = Math.min(1, starCur.gl);
+    const gs = 4 + 9 * Math.pow(Math.max(.1, starCur.s), .8); glow.scale.set(gs, gs, 1);
+    // Solar System: inner planets orbit faster (Kepler's third law, simplified)
+    sol.forEach(p => { p.ang += .012 / Math.pow(p.rad / 5, 1.5); p.mesh.position.set(Math.cos(p.ang) * p.rad, 0, Math.sin(p.ang) * p.rad); p.mesh.rotation.y += .01; });
+    moonAng += .04; moon.position.set(earth.mesh.position.x + Math.cos(moonAng) * 1.5, 0, earth.mesh.position.z + Math.sin(moonAng) * 1.5);
+    star.rotation.y += .0015;
+    angle += Math.min(.05, .006 / Math.pow(Math.max(.1, (orbitR - 3) / 5), 1.5));   // Kepler-ish: closer = faster
+    prev.copy(planet.position);
+    planet.position.set(Math.cos(angle) * orbitR, 0, Math.sin(angle) * orbitR);     // orbit the star
+    planet.rotation.y += .004;                                                       // spin on its axis
+
+    // Camera follow: Lab = the exoplanet (if ticked), Planets tab = the selected planet
+    const ft = mode === "lab" && $("follow").checked ? planet : mode === "solar" && selected !== null ? sol[selected].mesh : null;
+    if (ft) { delta.copy(ft.position).sub(controls.target); camera.position.add(delta); controls.target.copy(ft.position); }
+    controls.update();
+    renderer.render(scene, camera);
+  }
+  sceneReady = true;
+  hooks.setMode(mode);
+  animate();
+}
+</script>
+</body>
+</html>
