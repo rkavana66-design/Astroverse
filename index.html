@@ -7,7 +7,9 @@
 <meta name="description" content="Build exoplanets in 3D, explore the Solar System and star life cycles, and see how machine learning predicts habitable worlds. Free for students.">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🪐</text></svg>">
 <style>
-  :root { --bg:#070a14; --panel:#0f1424; --card:#151b30; --line:#252d47; --text:#e8ebf5; --muted:#8e97b4; --accent:#4de0c0; --warm:#ffb454; }
+  :root { --bg:#070a14; --panel:#0f1424; --card:#151b30; --line:#252d47; --text:#e8ebf5; --muted:#8e97b4; --accent:#4de0c0; --warm:#ffb454; --chip:#0b2a2a; --chip-line:#1d5a52; --track:#0b0f1d; --hover:#1a2340; --ok-bg:#12301f; --bad-bg:#341610; }
+  :root[data-theme="light"] { --bg:#eef1f8; --panel:#ffffff; --card:#f1f4fb; --line:#d3d9ea; --text:#161b2e; --muted:#566080; --accent:#0a8f78; --warm:#b36b00; --chip:#d9f3ee; --chip-line:#8fd3c4; --track:#dde3f2; --hover:#e4eaf8; --ok-bg:#d8f5e3; --bad-bg:#fde1da; }
+  :root[data-theme="light"] #classLabel { filter:brightness(.72); }
   * { box-sizing:border-box; }
   html, body { height:100%; margin:0; }
   body { display:grid; grid-template-columns:370px 1fr; background:var(--bg); color:var(--text); font-family:system-ui,-apple-system,"Segoe UI",sans-serif; }
@@ -17,14 +19,14 @@
   h2 { font-size:.72rem; letter-spacing:.12em; color:var(--muted); margin:18px 0 10px; font-weight:600; }
   .control { margin-bottom:14px; }
   .row { display:flex; justify-content:space-between; align-items:center; font-size:.88rem; margin-bottom:5px; }
-  .badge { background:#0b2a2a; color:var(--accent); border:1px solid #1d5a52; border-radius:999px; padding:2px 10px; font-size:.8rem; font-variant-numeric:tabular-nums; }
+  .badge { background:var(--chip); color:var(--accent); border:1px solid var(--chip-line); border-radius:999px; padding:2px 10px; font-size:.8rem; font-variant-numeric:tabular-nums; }
   input[type=range] { width:100%; accent-color:var(--accent); cursor:pointer; }
   .presets { display:flex; gap:8px; }
   .presets button { flex:1; padding:9px 0; background:var(--card); color:var(--text); border:1px solid var(--line); border-radius:8px; font-size:.88rem; cursor:pointer; transition:border-color .15s, background .15s; }
-  .presets button:hover, .presets button:focus-visible { border-color:var(--accent); background:#1a2340; outline:none; }
+  .presets button:hover, .presets button:focus-visible { border-color:var(--accent); background:var(--hover); outline:none; }
   .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:14px 16px; }
   #classLabel { font-size:1.35rem; font-weight:700; margin:0 0 10px; }
-  .bar { height:10px; background:#0b0f1d; border-radius:6px; overflow:hidden; }
+  .bar { height:10px; background:var(--track); border-radius:6px; overflow:hidden; }
   .bar > div { height:100%; width:0; transition:width .3s, background .3s; }
   .meta { display:flex; justify-content:space-between; font-size:.82rem; color:var(--muted); margin-top:8px; }
   #pathText { font-size:.76rem; color:var(--muted); margin-top:10px; line-height:1.45; }
@@ -44,18 +46,41 @@
   .list { display:grid; grid-template-columns:1fr 1fr; gap:6px; margin-bottom:12px; }
   .list button, .opt, .btn { padding:8px 10px; background:var(--card); color:var(--text); border:1px solid var(--line); border-radius:8px; font-size:.85rem; cursor:pointer; text-align:left; }
   .list button:hover, .opt:hover, .list button.on { border-color:var(--accent); }
-  .opt { display:block; width:100%; margin-bottom:8px; } .opt.right { border-color:#4cd37b; background:#12301f; } .opt.wrong { border-color:#ff5a2a; background:#341610; }
-  .btn { background:#0b2a2a; border-color:#1d5a52; color:var(--accent); text-align:center; width:100%; margin-top:10px; }
+  .opt { display:block; width:100%; margin-bottom:8px; } .opt.right { border-color:#4cd37b; background:var(--ok-bg); } .opt.wrong { border-color:#ff5a2a; background:var(--bad-bg); }
+  .btn { background:var(--chip); border-color:var(--chip-line); color:var(--accent); text-align:center; width:100%; margin-top:10px; }
   input[type=search] { width:100%; padding:9px 10px; background:var(--card); color:var(--text); border:1px solid var(--line); border-radius:8px; margin-bottom:10px; }
   details { background:var(--card); border:1px solid var(--line); border-radius:8px; padding:9px 12px; margin-bottom:8px; font-size:.88rem; }
   summary { cursor:pointer; font-weight:600; } details p { margin:8px 0 0; line-height:1.5; color:var(--muted); }
   #quizBox p, #planetInfo, #starInfo { line-height:1.55; margin:0 0 10px; font-size:.9rem; }
-  @media (max-width:800px) { body { grid-template-columns:1fr; grid-template-rows:auto 65vh; } aside { border-right:0; border-bottom:1px solid var(--line); } }
+  h1 { background:linear-gradient(90deg,var(--accent),#7aa2ff); -webkit-background-clip:text; background-clip:text; color:transparent; }
+  .tbtn { background:var(--card); border:1px solid var(--line); border-radius:999px; width:38px; height:38px; font-size:1.05rem; cursor:pointer; }
+  #scene canvas { touch-action:none; }
+  #welcome { position:fixed; inset:0; z-index:50; display:flex; align-items:center; justify-content:center; padding:20px; background:radial-gradient(circle at 30% 20%,#1b2a5a,#05070f 70%); color:#e8ebf5; text-align:center; transition:opacity .4s; }
+  #welcome.hide { opacity:0; pointer-events:none; }
+  #welcome .box { max-width:560px; } #welcome h2 { font-size:2.3rem; margin:6px 0; letter-spacing:0; color:#fff; font-weight:700; }
+  #welcome p { color:#b9c1dd; line-height:1.6; }
+  .feat { display:grid; grid-template-columns:repeat(3,1fr); gap:10px; margin:22px 0 4px; font-size:.85rem; }
+  .feat div { background:rgba(255,255,255,.07); border:1px solid rgba(255,255,255,.12); border-radius:12px; padding:12px; }
+  .start { margin-top:18px; padding:14px 34px; font-size:1.05rem; font-weight:700; border:0; border-radius:999px; background:linear-gradient(90deg,#4de0c0,#7aa2ff); color:#06101a; cursor:pointer; }
+  @media (max-width:800px) {            /* phones: 3D view stays pinned on top, controls scroll underneath */
+    html, body { height:auto; } body { display:block; }
+    main { position:sticky; top:0; z-index:5; height:42vh; border-bottom:1px solid var(--line); }
+    aside { border-right:0; overflow:visible; padding:18px 16px 40px; }
+    input[type=range] { height:30px; } .tabs button { padding:10px 4px; }
+    .presets button, .list button, .opt { min-height:44px; }
+    #welcome h2 { font-size:1.8rem; } .feat { grid-template-columns:1fr; }
+  }
 </style>
 </head>
 <body>
+<div id="welcome" role="dialog" aria-label="Welcome"><div class="box">
+  <div style="font-size:3rem">🪐</div><h2>ExoMind 3D</h2>
+  <p>The AI Exoplanet Laboratory. Build planets, explore the Solar System, watch stars live and die, and see how a decision tree trained on NASA data decides if a world is habitable.</p>
+  <div class="feat"><div>🧪<br>Build planets</div><div>🤖<br>See the AI decide</div><div>🎯<br>Missions and quiz</div></div>
+  <button class="start" id="startBtn">Start exploring 🚀</button>
+</div></div>
 <aside>
-  <h1>ExoMind 3D</h1>
+  <div style="display:flex;justify-content:space-between;align-items:center"><h1>ExoMind 3D</h1><button class="tbtn" id="themeBtn" aria-label="Switch light or dark theme">☀️</button></div>
   <p class="tag">The AI Exoplanet Laboratory</p>
   <div class="tabs">
     <button class="on" data-tab="lab">🧪 Lab</button><button data-tab="solar">🪐 Planets</button><button data-tab="stars">⭐ Stars</button><button data-tab="quiz">🎯 Quiz</button><button data-tab="help">❓ Help</button>
@@ -283,7 +308,13 @@ const MISSIONS = [
     goal:(s, r) => r.cls === "gas", hint:"Raise the mass above 8 Earth masses.", why:"A heavy core captures hydrogen and helium faster and faster (runaway accretion)." },
   { t:"Habitable, far from the star", d:"Make a Habitable planet at 1.5 AU or farther.",
     goal:(s, r) => r.cls === "hab" && s.distance >= 1.5,
-    hint:"Go beyond 1.5 AU, then give it a greenhouse of roughly 30–55% to warm it back up.", why:"Greenhouse gases can push the habitable zone outward. Early Mars may have been warm this way." }
+    hint:"Go beyond 1.5 AU, then give it a greenhouse of roughly 30–55% to warm it back up.", why:"Greenhouse gases can push the habitable zone outward. Early Mars may have been warm this way." },
+  { t:"Habitable, closer than Earth", d:"Make a Habitable planet closer than 1 AU.",
+    goal:(s, r) => r.cls === "hab" && s.distance < 1, hint:"Try 0.85 to 0.95 AU with a greenhouse under 24%.", why:"More starlight means you need less greenhouse gas. Too much and you drift toward Venus." },
+  { t:"Habitable super-Earth", d:"Make a Habitable planet with a mass between 4 and 8 Earth masses.",
+    goal:(s, r) => r.cls === "hab" && s.mass >= 4 && s.mass <= 8, hint:"Set mass to about 5, distance near 1 AU, greenhouse about 15%.", why:"Super-Earths are common among real exoplanets, and some could keep thick atmospheres and oceans." },
+  { t:"Frozen despite a thick atmosphere", d:"Make a Frozen Ice World with greenhouse of 60% or more.",
+    goal:(s, r) => r.cls === "ice" && s.ghg >= 60, hint:"Put the planet beyond 2.3 AU, then raise the greenhouse.", why:"Starlight that far out is too weak. Even a strong greenhouse can't make up for the missing energy." }
 ];
 const done = new Set(); let curMission = 0;
 function refreshMissionMenu() {
@@ -304,6 +335,17 @@ function checkMission(s, r) {                 // runs on every slider move
 $("missionSel").onchange = () => { curMission = +$("missionSel").value; $("hintText").textContent = ""; update(); };
 $("hintBtn").onclick = () => { $("hintText").textContent = "💡 " + MISSIONS[curMission].hint; };
 refreshMissionMenu();
+
+/* ---------- WELCOME SCREEN + LIGHT/DARK THEME ---------- */
+$("startBtn").onclick = () => { $("welcome").classList.add("hide"); setTimeout(() => $("welcome").style.display = "none", 450); };
+$("startBtn").focus();
+function setTheme(t) {                        // the CSS variables switch with the data-theme attribute on <html>
+  document.documentElement.dataset.theme = t; $("themeBtn").textContent = t === "light" ? "🌙" : "☀️";
+  try { localStorage.setItem("exomind-theme", t); } catch (e) {}
+}
+$("themeBtn").onclick = () => setTheme(document.documentElement.dataset.theme === "light" ? "dark" : "light");
+let savedTheme = "dark"; try { savedTheme = localStorage.getItem("exomind-theme") || "dark"; } catch (e) {}
+setTheme(savedTheme);
 
 function update() {                           // runs on EVERY slider move and preset click
   const s = readSliders(), r = analyze(s);
@@ -341,7 +383,7 @@ const PLANETS = [
   { n:"Earth",   au:1,   r:.65, c:0x2f7de1, m:1,    g:20,  f:"The only known world with life. Liquid oceans and a modest greenhouse effect keep the average near 15 °C. Watch its Moon circle it." },
   { n:"Mars",    au:1.52,r:.45, c:0xc1583a, m:.107, g:5,   f:"Thin carbon-dioxide air and iron-oxide dust make it cold and red. Olympus Mons is the tallest known volcano, about 22 km high." },
   { n:"Ceres",   au:2.77,r:.25,c:0x8a8580, m:.00016, g:0, f:"A dwarf planet and the largest object in the asteroid belt. About 940 km wide, it may hide salty water beneath its crust." },
-  { n:"Jupiter", au:5.2, r:1.6, c:0xd9a066, m:318,  g:50,  f:"A gas giant with 318 Earth masses. Its Great Red Spot is a storm wider than Earth that has raged for centuries." },
+  { n:"Jupiter", au:5.2, r:1.6, c:0xd9a066, m:318,  g:50,  f:"A gas giant with 318 Earth masses. Its Great Red Spot is a storm wider than Earth that has raged for centuries. Watch its four biggest moons (Io, Europa, Ganymede, Callisto) circle it." },
   { n:"Saturn",  au:9.54,r:1.4, c:0xe6d3a3, m:95,   g:50,  f:"Less dense than water. Its bright rings are billions of chunks of ice and rock." },
   { n:"Uranus",  au:19.2,r:1,   c:0x8fe0e8, m:14.5, g:50,  f:"An ice giant tilted about 98°, so it rolls around the Sun on its side." },
   { n:"Neptune", au:30.1,r:1,   c:0x3a5fe0, m:17.1, g:50,  f:"Methane gives it a blue color. Its winds exceed 2,000 km/h, the fastest in the Solar System." },
@@ -434,7 +476,13 @@ const QUIZ = [
   { q:"Which kind of star lives the longest?", o:["Blue giant", "Sun-like star", "Red dwarf"], a:2, e:"Red dwarfs burn fuel so slowly that they can shine for trillions of years." },
   { q:"What does the green ring in the Lab show?", o:["The asteroid belt", "The habitable zone, 0.8 to 1.5 AU", "The planet's orbit speed"], a:1, e:"Inside it a planet can be warm enough for liquid water." },
   { q:"What is the ice-albedo feedback?", o:["Ice reflects sunlight, which cools the planet even more", "Ice melts faster in the dark", "Ice traps heat like a blanket"], a:0, e:"More ice means more reflected sunlight, which means a colder planet and even more ice." },
-  { q:"Which of these is a dwarf planet?", o:["Mars", "Ceres", "Neptune"], a:1, e:"Ceres lives in the asteroid belt. Pluto is a dwarf planet too." }
+  { q:"Which of these is a dwarf planet?", o:["Mars", "Ceres", "Neptune"], a:1, e:"Ceres lives in the asteroid belt. Pluto is a dwarf planet too." },
+  { q:"Which moon hides a salty ocean under its ice and is a top target in the search for life?", o:["Europa", "Phobos", "Earth's Moon"], a:0, e:"Europa, a moon of Jupiter, has an ocean under its icy shell." },
+  { q:"What is the Sun mostly made of?", o:["Hydrogen and helium", "Iron", "Rock"], a:0, e:"About 73% hydrogen and 25% helium. It shines by fusing hydrogen into helium." },
+  { q:"How long does sunlight take to reach Earth?", o:["About 8 seconds", "About 8 minutes", "About 8 hours"], a:1, e:"Light travels about 300,000 km every second, so the trip takes roughly 8 minutes 20 seconds." },
+  { q:"Which planet is the hottest in the Solar System?", o:["Mercury", "Venus", "Mars"], a:1, e:"Venus, thanks to its runaway greenhouse effect. It's hotter than Mercury even though it's farther from the Sun." },
+  { q:"In the Lab, what usually happens when you move a planet very far from its star?", o:["It gets colder and may freeze", "It melts", "Nothing changes"], a:0, e:"Starlight weakens with distance squared, so the planet cools." },
+  { q:"A light-year is a unit of...", o:["Time", "Distance", "Brightness"], a:1, e:"It's the distance light travels in one year, about 9.46 trillion km." }
 ];
 let qi = 0, score = 0, deck = [];
 const newDeck = () => { deck = [...QUIZ].sort(() => Math.random() - .5).slice(0, 10); };   // 10 random questions per round
@@ -481,6 +529,9 @@ const FAQ = [
   ["What is the Milky Way?", "Our home galaxy, with hundreds of billions of stars. The pale band of light you see on a dark night is its disk seen from inside."],
   ["What is a pulsar?", "A fast-spinning neutron star that sweeps beams of radio waves across space like a lighthouse."],
   ["How do we find exoplanets?", "Mostly by watching a star's brightness: when a planet crosses in front, the light dips slightly (the transit method). Planets can also make their star wobble."],
+  ["Which moons might have life?", "Europa (Jupiter) and Enceladus (Saturn) hide salty oceans under ice. They are top targets in the search for life."],
+  ["How long does sunlight take to reach Earth?", "About 8 minutes and 20 seconds, because light travels about 300,000 km every second."],
+  ["What is the Sun made of?", "About 73% hydrogen and 25% helium. It shines by fusing hydrogen into helium in its core."],
   ["What is a decision tree (in AI)?", "A model that asks a series of yes/no questions (is mass < 0.3? is it inside the ring?) until it reaches an answer. This Lab's classifier works that way."]
 ];
 function renderFaq(filter = "") {
@@ -658,8 +709,11 @@ function init3D() {
   });
 
   // Earth's Moon (orbits Earth, not the Sun) and the asteroid belt (a ring of 700 tiny rocks around Ceres' orbit)
-  const moon = new THREE.Mesh(new THREE.SphereGeometry(.18, 16, 16), new THREE.MeshStandardMaterial({ color: 0xbbbbbb }));
-  solar.add(moon); const earth = sol[PLANETS.findIndex(p => p.n === "Earth")]; let moonAng = 0;
+  // Moons: [host planet, orbit radius, speed, size, color]. Earth's Moon + Jupiter's Io, Europa, Ganymede, Callisto
+  const moons = [["Earth", 1.5, .04, .18, 0xbbbbbb], ["Jupiter", 2.3, .09, .12, 0xe0c080], ["Jupiter", 2.9, .06, .12, 0xd8d8d0], ["Jupiter", 3.6, .045, .16, 0x9a8a7a], ["Jupiter", 4.4, .03, .15, 0x6a625a]].map(([host, d, sp, r, c]) => {
+    const mesh = new THREE.Mesh(new THREE.SphereGeometry(r, 16, 16), new THREE.MeshStandardMaterial({ color: c }));
+    solar.add(mesh); return { mesh, host: sol[PLANETS.findIndex(p => p.n === host)], d, sp, ang: Math.random() * 6.28 };
+  });
   const beltR = 5 + PLANETS.findIndex(p => p.n === "Ceres") * 3.2, bp = [];
   for (let k = 0; k < 700; k++) { const a = Math.random() * 6.2832, r = beltR + (Math.random() - .5) * 2.2; bp.push(Math.cos(a) * r, (Math.random() - .5) * .5, Math.sin(a) * r); }
   const bg = new THREE.BufferGeometry(); bg.setAttribute("position", new THREE.Float32BufferAttribute(bp, 3));
@@ -720,7 +774,7 @@ function init3D() {
     const gs = 4 + 9 * Math.pow(Math.max(.1, starCur.s), .8); glow.scale.set(gs, gs, 1);
     // Solar System: inner planets orbit faster (Kepler's third law, simplified)
     sol.forEach(p => { p.ang += .012 / Math.pow(p.rad / 5, 1.5); p.mesh.position.set(Math.cos(p.ang) * p.rad, 0, Math.sin(p.ang) * p.rad); p.mesh.rotation.y += .01; });
-    moonAng += .04; moon.position.set(earth.mesh.position.x + Math.cos(moonAng) * 1.5, 0, earth.mesh.position.z + Math.sin(moonAng) * 1.5);
+    moons.forEach(m => { m.ang += m.sp; m.mesh.position.set(m.host.mesh.position.x + Math.cos(m.ang) * m.d, 0, m.host.mesh.position.z + Math.sin(m.ang) * m.d); });
     star.rotation.y += .0015;
     angle += Math.min(.05, .006 / Math.pow(Math.max(.1, (orbitR - 3) / 5), 1.5));   // Kepler-ish: closer = faster
     prev.copy(planet.position);
