@@ -76,6 +76,18 @@
   #walkBtn { bottom:70px; } #jumpBtn { bottom:14px; }
   body:not(.surface) #hud, body:not(.surface) .walk { display:none; }
   body.surface #nova { right:120px; }
+  .hswitch { display:flex; align-items:center; gap:10px; margin:0 0 14px; padding:10px 12px; border:1px solid #5b3fd1; border-radius:12px; background:linear-gradient(90deg,rgba(91,63,209,.22),rgba(0,200,255,.12)); font-size:.76rem; font-weight:700; letter-spacing:.04em; cursor:pointer; position:relative; }
+  .hswitch input { position:absolute; opacity:0; }
+  .trk { flex:none; width:42px; height:22px; border-radius:99px; background:#2a2f4a; position:relative; transition:.2s; }
+  .trk::after { content:""; position:absolute; top:3px; left:3px; width:16px; height:16px; border-radius:50%; background:#9aa6d6; transition:.2s; }
+  .hswitch input:checked + .trk { background:#7c4dff; box-shadow:0 0 12px #7c4dff; } .hswitch input:checked + .trk::after { left:23px; background:#fff; }
+  .hswitch input:focus-visible + .trk { outline:2px solid var(--accent); }
+  #holoBar { position:absolute; top:10px; right:10px; z-index:40; display:flex; gap:10px; align-items:center; flex-wrap:wrap; background:rgba(15,20,36,.85); color:#e8ebf5; padding:6px 10px; border-radius:12px; font-size:.78rem; }
+  #holoBar button { background:#7c4dff; color:#fff; border:0; border-radius:8px; padding:6px 10px; cursor:pointer; } #holoBar input[type=range] { width:90px; }
+  #holoGuideBox { position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); border:1px dashed rgba(255,255,255,.25); pointer-events:none; z-index:5; }
+  body:not(.holo) #holoBar, body:not(.holo) #holoGuideBox { display:none; }
+  body.holo #nova, body.holo #hud, body.holo .walk { display:none; }
+  @media (max-width:800px) { body.holo aside { display:none; } body.holo main { position:fixed; inset:0; height:100%; z-index:30; } }
   #nova { position:absolute; left:14px; bottom:14px; right:14px; max-width:430px; display:flex; gap:10px; align-items:flex-end; z-index:6; pointer-events:none; }
   #nova > * { pointer-events:auto; }
   #novaFace { width:54px; height:54px; flex:none; border-radius:50%; position:relative; background:radial-gradient(circle at 35% 30%,#b8fff0,#4de0c0 60%,#2aa58f); box-shadow:0 0 18px rgba(77,224,192,.55); animation:novaFloat 3s ease-in-out infinite; }
@@ -116,6 +128,13 @@
   </div>
   <div class="tab on" id="tab-lab">
     <button class="land" id="landBtn">🚀 LAND ON PLANET SURFACE</button>
+    <label class="hswitch"><input type="checkbox" id="holoToggle"><span class="trk"></span><span>🔮 ACTIVATE HOLOGRAPHIC PRISM MODE</span></label>
+    <div class="card" id="wxCard" style="margin-bottom:14px">
+      <b>🌍 Sync with Earth Weather</b>
+      <div style="display:flex;gap:6px;margin-top:8px"><input type="search" id="cityInput" placeholder="Type a city, e.g. Bengaluru" style="margin:0" aria-label="City name">
+        <button class="btn" id="syncBtn" style="width:auto;margin:0;padding:8px 12px">Sync</button><button class="btn" id="wxClear" style="width:auto;margin:0;padding:8px 10px" aria-label="Clear weather link">✖</button></div>
+      <p id="wxStatus" style="margin:8px 0 0;font-size:.82rem;line-height:1.5;color:var(--muted)">Real temperature, clouds and humidity from a city will shape your alien planet.</p>
+    </div>
     <div class="card xeno" id="xenoCard" hidden><div class="xhead">📝 AI XENOBIOLOGIST ENCRYPTED LOG</div><pre id="xenoText"></pre></div>
     <div class="card" id="missionCard" style="margin-bottom:16px">
       <div class="row" style="margin:0"><b>🚀 Mission</b><select id="missionSel" aria-label="Choose a mission"></select></div>
@@ -181,6 +200,8 @@
 </aside>
 <main><div id="scene"></div>
   <div id="flash"></div><div id="hud"></div>
+  <div id="holoBar"><button id="holoExit">✖ Exit hologram</button><label>Size <input type="range" id="holoSize" min="50" max="160" value="100"></label><label><input type="checkbox" id="holoGuide" checked> Guide</label><label><input type="checkbox" id="holoFlip"> Flip</label></div>
+  <div id="holoGuideBox"></div>
   <button class="walk" id="walkBtn">⬆ Walk</button><button class="walk" id="jumpBtn">⤒ Jump</button>
   <div id="nova" aria-live="polite">
     <div id="novaFace"><i></i></div>
@@ -203,7 +224,7 @@
 
 // Nova's state lives at the very top so every function below (including the first update() call) can safely use it.
 const nova = { on: true, ready: false, moved: false, t: 0, t2: 0, lastCls: null, voice: null };
-let isSurfaceMode = false, lastSR = null;   // global view-mode flag + the latest {sliders, ML result} for the surface engine
+let isSurfaceMode = false, lastSR = null, weather = null;   // weather = the synced Earth city (or null)   // global view-mode flag + the latest {sliders, ML result} for the surface engine
 
 /* ---------- 1. PHYSICS + DECISION TREE ---------- */
 const HZ_INNER = 0.8, HZ_OUTER = 1.5;       // Goldilocks zone edges in AU (also drawn as the green ring)
@@ -429,7 +450,10 @@ function xenoLog(s, r) {
     : cls === "lava" ? `Cinder and basalt grit, bulk density ${dn} g/cm³, warm even through my boots.`
     : `Powder-fine regolith, bulk density ${dn} g/cm³. My boot prints are crisp and will outlast us.`;
 
-  return `>> DECRYPTING LOG #${100 + seed % 900} ... OK\n>> SURFACE ${T} K | ${d.toFixed(2)} AU | ${m.toFixed(2)} M⊕ | GREENHOUSE ${g}%\n\n[01] GRAVITY\n${gravity}\n\n[02] SKY\n${sky}\n\n[03] FLORA / FORMATIONS\n${flora}\n\n[04] LIQUIDS\n${lakes}\n\n[05] SOIL\n${soil}\n\n>> END OF LOG // SIGNAL FADING`;
+  const wx = weather, wxHead = wx ? `>> Synthesizing alien planet based on the atmospheric telemetry of ${wx.name}, Earth...\n>> TELEMETRY: ${wx.T} °C | CLOUDS ${wx.cloud}% | HUMIDITY ${wx.hum}%${wx.snow ? " | SNOWFALL" : ""}${wx.simulated ? " (simulated offline data)" : ""}\n\n` : "";
+  const stormTxt = wx && wx.cloud > 60 ? ` Storm fronts boil overhead (${wx.cloud}% cloud cover), mist rolls across the ground and lightning stitches the haze.` : wx && wx.cloud < 15 ? " Not a cloud in sight." : "";
+  const humTxt = wx && wx.hum > 70 && cls !== "rock" && cls !== "lava" ? ` Humidity ${wx.hum}%: the air is thick enough to taste.` : "";
+  return `${wxHead}>> DECRYPTING LOG #${100 + seed % 900} ... OK\n>> SURFACE ${T} K | ${d.toFixed(2)} AU | ${m.toFixed(2)} M⊕ | GREENHOUSE ${g}%\n\n[01] GRAVITY\n${gravity}\n\n[02] SKY\n${sky}${stormTxt}\n\n[03] FLORA / FORMATIONS\n${flora}\n\n[04] LIQUIDS\n${lakes}${humTxt}\n\n[05] SOIL\n${soil}\n\n>> END OF LOG // SIGNAL FADING`;
 }
 let typeTimer = 0, logTimer = 0;
 function typeLog(text) {                        // typewriter effect: reveal 8 characters every frame-ish
@@ -439,6 +463,59 @@ function typeLog(text) {                        // typewriter effect: reveal 8 c
 function scheduleLog() {                        // wait until the slider stops moving before rewriting the log
   clearTimeout(logTimer); logTimer = setTimeout(() => lastSR && typeLog(xenoLog(lastSR.s, lastSR.r)), 400);
 }
+
+/* ---------- EARTH-TO-COSMOS WEATHER BRIDGE ----------
+   1) fetchWeather(): real data. Uses OpenWeatherMap if you paste a key below; otherwise the free, keyless Open-Meteo service.
+   2) mockWeather(): if the network is blocked or offline, a believable fake JSON-shaped reading is made from the city name.
+   3) applyWeather(): maps Earth numbers onto the exoplanet sliders. */
+const OWM_KEY = "";                                   // optional: your OpenWeatherMap API key
+const SNOW_CODES = [71, 73, 75, 77, 85, 86];          // WMO weather codes that mean snow
+async function getJSON(url) {
+  const ctl = new AbortController(), t = setTimeout(() => ctl.abort(), 6000);
+  try { const r = await fetch(url, { signal: ctl.signal }); if (!r.ok) throw new Error("HTTP " + r.status); return await r.json(); }
+  finally { clearTimeout(t); }
+}
+async function fetchWeather(city) {
+  if (OWM_KEY) {
+    const j = await getJSON(`https://api.openweathermap.org/data/2.5/weather?q=${encodeURIComponent(city)}&units=metric&appid=${OWM_KEY}`);
+    return { name: j.name, T: Math.round(j.main.temp), hum: j.main.humidity, cloud: j.clouds.all, snow: /snow/i.test(j.weather[0].main) };
+  }
+  const g = await getJSON(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(city)}&count=1`);   // city name -> lat/lon
+  if (!g.results || !g.results.length) throw new Error("NOT_FOUND");
+  const p = g.results[0];
+  const w = await getJSON(`https://api.open-meteo.com/v1/forecast?latitude=${p.latitude}&longitude=${p.longitude}&current=temperature_2m,relative_humidity_2m,cloud_cover,weather_code`);
+  const c = w.current;
+  return { name: p.name, T: Math.round(c.temperature_2m), hum: Math.round(c.relative_humidity_2m), cloud: Math.round(c.cloud_cover), snow: SNOW_CODES.includes(c.weather_code) };
+}
+function mockWeather(city) {                          // deterministic "fake API response": same city -> same numbers
+  let h = 0; for (const ch of city.toLowerCase()) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+  const T = (h % 55) - 15;
+  return { name: city.trim().replace(/\b\w/g, c => c.toUpperCase()), T, hum: 30 + (h >>> 3) % 65, cloud: (h >>> 5) % 101, snow: T <= -2, simulated: true };
+}
+function applyWeather(w) {
+  const frozen = w.snow || w.T <= 0;                  // freezing or snowing city -> ice-sheet planet
+  const ghg = frozen ? 4 : Math.round(Math.min(100, Math.max(0, 10 + (w.T - 10) * 2.2)));   // hot city -> greenhouse spike (10 C ~ 10%, 40 C ~ 76%)
+  const dist = frozen ? 2.6 : 1.15;                   // otherwise a cosy Earth-like orbit; the cloud and humidity values shape the surface
+  weather = w; nova.moved = true; $("distance").value = dist; $("ghg").value = ghg;
+  $("wxStatus").textContent = `📍 ${w.name}: ${w.T} °C · clouds ${w.cloud}% · humidity ${w.hum}%${w.snow ? " · snow" : ""}${w.simulated ? " (offline demo data)" : ""}  →  greenhouse ${ghg}%, orbit ${dist} AU${w.cloud > 60 ? ", stormy skies" : ""}.`;
+  update();
+  say(`Synthesizing an alien planet from the weather in ${w.name}. ${w.T} degrees, ${w.cloud} percent clouds. Press land to walk on it.`);
+}
+async function syncWeather() {
+  const city = $("cityInput").value.trim();
+  if (!city) { $("wxStatus").textContent = "Type a city name first."; return; }
+  $("wxStatus").textContent = "📡 Contacting Earth…"; $("syncBtn").disabled = true;
+  let w;
+  try { w = await fetchWeather(city); }
+  catch (e) {
+    if (e.message === "NOT_FOUND") { $("wxStatus").textContent = `Could not find "${city}". Check the spelling.`; $("syncBtn").disabled = false; return; }
+    w = mockWeather(city);                            // network failed -> keep the lesson working with simulated telemetry
+  }
+  $("syncBtn").disabled = false; applyWeather(w);
+}
+$("syncBtn").onclick = syncWeather;
+$("cityInput").addEventListener("keydown", e => { if (e.key === "Enter") syncWeather(); });
+$("wxClear").onclick = () => { weather = null; $("wxStatus").textContent = "Weather link cleared."; update(); };
 
 /* ---------- NOVA BUTTONS ---------- */
 $("novaMute").onclick = () => {
@@ -519,7 +596,8 @@ const hooks = {};                           // filled by init3D(): lets this UI 
 document.querySelectorAll(".tabs button").forEach(b => b.addEventListener("click", () => {
   document.querySelectorAll(".tabs button, .tab").forEach(e => e.classList.remove("on"));
   b.classList.add("on"); $("tab-" + b.dataset.tab).classList.add("on");
-  if (isSurfaceMode && b.dataset.tab !== "lab") hooks.exitSurface && hooks.exitSurface();   // leave the surface if the student switches tabs
+  if (isSurfaceMode && b.dataset.tab !== "lab") hooks.exitSurface && hooks.exitSurface();
+  if (b.dataset.tab !== "lab") hooks.exitHolo && hooks.exitHolo();   // leave the surface if the student switches tabs
   if (nova.ready) say(NOVA_TABS[b.dataset.tab]);
   if (["lab", "solar", "stars"].includes(b.dataset.tab)) { mode = b.dataset.tab; hooks.setMode && hooks.setMode(mode); applyStar(); }
 }));
@@ -931,6 +1009,11 @@ function init3D() {
   surface.add(hemi, sun, sunSprite);
   const FL = 220, flora = new THREE.InstancedMesh(new THREE.ConeGeometry(.5, 1, 5), new THREE.MeshStandardMaterial({ roughness: .7 }), FL);
   surface.add(flora);
+  // Storm deck: a drifting grey cloud layer above the ground (only visible when the synced city was cloudy)
+  const deckTex = canvasTex(256, 256, (g, w, h) => { for (let i = 0; i < 400; i++) { g.fillStyle = `rgba(200,205,220,${.04 + Math.random() * .12})`; g.beginPath(); g.arc(Math.random() * w, Math.random() * h, 8 + Math.random() * 30, 0, 6.3); g.fill(); } });
+  deckTex.wrapS = deckTex.wrapT = THREE.RepeatWrapping; deckTex.repeat.set(4, 4);
+  const deckMat = new THREE.MeshBasicMaterial({ map: deckTex, transparent: true, opacity: .5, depthWrite: false, side: THREE.DoubleSide, color: 0x9aa0b4 });
+  const deck = new THREE.Mesh(new THREE.PlaneGeometry(SIZE * 2, SIZE * 2).rotateX(-Math.PI / 2), deckMat); deck.visible = false; surface.add(deck);
 
   // PRE-COMPUTED noise (done once, so slider moves stay fast): a smooth hill map, a detail map, a river line map, and crater bowls.
   const nA = new Float32Array(NV), nB = new Float32Array(NV), nR = new Float32Array(NV), nC = new Float32Array(NV);
@@ -952,14 +1035,16 @@ function init3D() {
     return lerp(lerp(at(0, 0), at(1, 0), u), lerp(at(0, 1), at(1, 1), u), v);
   }
 
-  let surfaceDirty = false;
+  let surfaceDirty = false, baseHemi = .9, stormNow = 0, flashT = 0;
   function buildSurface() {                               // runs at most once per frame, only when a slider changed
     surfaceDirty = false;
     const { s, r } = lastSR, cls = r.cls, T = r.temp, gf = clamp(s.ghg / 100, 0, 1);
     // HEIGHT SCALE: weaker gravity (low mass) lets mountains stand taller, so relief grows as mass falls.
-    const relief = clamp(9 / Math.pow(s.mass, .35), 3, 16);
+    // WEATHER: cloud cover -> storm (0..1). Humidity (0..1) raises the oceans and thickens the mist.
+    const wx = weather, storm = wx ? Math.pow(clamp(wx.cloud / 100, 0, 1), 1.5) : 0, hum = wx ? clamp(wx.hum / 100, 0, 1) : .5; stormNow = storm;
+    const relief = clamp(9 / Math.pow(s.mass, .35), 3, 16) * (1 + .5 * storm);   // stormy worlds get more dramatic relief
     const hot = clamp((T - 320) / 160, 0, 1);              // 0..1: how extreme the heat is (drives trench depth on lava worlds)
-    const seaY = cls === "hab" ? -relief * .2 : -999, lavaY = cls === "lava" ? -relief * .55 : -999;
+    const seaY = cls === "hab" ? -relief * (.2 - (hum - .5) * .5) : -999, lavaY = cls === "lava" ? -relief * .55 : -999;
     const pos = tGeo.attributes.position, col = tGeo.attributes.color;
     for (let iz = 0; iz <= SEG; iz++) for (let ix = 0; ix <= SEG; ix++) {       // nested loop: rewrite every vertex height + colour
       const i = iz * (SEG + 1) + ix, a = nA[i], b = nB[i]; let h, R, G, B;
@@ -987,6 +1072,7 @@ function init3D() {
         else if (h < seaY + .9) { R = .86; G = .8; B = .5; }                    // sandy shore
         else { const t = clamp((h - seaY) / (relief * .8), 0, 1); R = lerp(.15, .35, t) + .05 * b; G = lerp(.55, .42, t); B = .14; }   // green hills
       }
+      h += storm * b * relief * .35;                       // storm chop: extra jagged detail added to every vertex
       pos.setY(i, h); col.setXYZ(i, R, G, B);
     }
     pos.needsUpdate = col.needsUpdate = true; tGeo.computeVertexNormals();
@@ -999,14 +1085,16 @@ function init3D() {
     // SKY: base colour per planet type, then pushed toward translucent emerald as greenhouse gas rises
     let sk = cls === "rock" ? [.01, .01, .03] : cls === "lava" ? [.32, .1, .05] : cls === "ice" ? [.7, .85, 1] : [.38, .72, 1];
     if (cls !== "rock") sk = sk.map((c, k) => lerp(c, [.08, .75, .45][k], gf * (cls === "lava" ? .35 : .75)));
+    if (cls !== "rock" && storm > 0) sk = sk.map((c, k) => lerp(c, [.26, .28, .34][k], storm * .65));   // heavy cloud greys the sky
     scene.background.setRGB(sk[0], sk[1], sk[2]);
     if (!scene.fog) scene.fog = new THREE.FogExp2(0, .01);
-    scene.fog.color.setRGB(sk[0], sk[1], sk[2]); scene.fog.density = cls === "rock" ? .0004 : .007 + .02 * gf;   // thicker atmosphere = denser haze
+    scene.fog.color.setRGB(sk[0], sk[1], sk[2]); scene.fog.density = cls === "rock" ? .0004 : (.007 + .02 * gf) * (1 + 3 * storm) + .004 * hum;   // thicker atmosphere = denser haze
     starPts.visible = cls === "rock";                                           // stars only show in a sky with no air
     hemi.color.setRGB(.5 + sk[0] * .5, .5 + sk[1] * .5, .5 + sk[2] * .5); hemi.groundColor.setRGB(cls === "lava" ? .5 : .2, cls === "lava" ? .18 : .2, cls === "lava" ? .02 : .2);
-    hemi.intensity = cls === "rock" ? .3 : .9;
+    baseHemi = (cls === "rock" ? .3 : .9) * (1 - .4 * storm); hemi.intensity = baseHemi;
     sun.position.copy(sunDir).multiplyScalar(100); sun.intensity = clamp(1.4 * Math.sqrt(1 / (s.distance * s.distance)), .35, 3);   // starlight falls with distance
     sunSprite.scale.setScalar(clamp(50 / Math.pow(s.distance, .8), 10, 120));
+    deck.visible = storm > .15 && cls !== "rock"; deckMat.opacity = .15 + .55 * storm; deck.position.y = relief * 1.4 + 14;
 
     // Flora / crystals / boulders placed on the new ground
     const mat = flora.material; mat.color.setHex(cls === "ice" ? 0x7fffff : cls === "lava" ? 0x2a1410 : cls === "rock" ? 0x6b6b6b : 0x2f9e44);
@@ -1044,11 +1132,15 @@ function init3D() {
     if (me.y <= floor) { me.y = floor; me.vy = 0; me.ground = true; }
     camera.position.set(me.x, me.y, me.z); camera.rotation.set(me.pitch, me.yaw, 0);
     sunSprite.position.copy(camera.position).addScaledVector(sunDir, 300);
+    if (deck.visible) deckTex.offset.x += dt * .01 * (1 + stormNow * 3);            // clouds drift faster in a storm
+    if (stormNow > .6 && flashT <= 0 && Math.random() < .006) flashT = .12;          // random lightning flash
+    if (flashT > 0) { flashT -= dt; hemi.intensity = 3; } else hemi.intensity = baseHemi;
     if (lava.visible) lavaMat.color.setHSL(.04 + .015 * Math.sin(clock.elapsedTime * 3), 1, .5 + .08 * Math.sin(clock.elapsedTime * 5));   // pulsing magma
     if ((hudT += dt) > .25) { hudT = 0; $("hud").innerHTML = `🧭 ${lastSR.r.label}<br>🌡️ ${Math.round(lastSR.r.temp)} K · ⬇ ${grav.toFixed(2)} g<br><small>WASD / arrows walk · drag to look · Space jumps</small>`; }
   }
 
   function startLanding() {
+    if (holo.on) exitHolo();
     if (flight.phase !== "orbit" || mode !== "lab" || !lastSR) return;
     if (lastSR.r.cls === "gas") { say("This is a gas giant, so there is no solid ground to land on. Lower the mass below eight Earth masses and try again!", true); return; }
     isSurfaceMode = true; flight.phase = "plunge"; flight.t = 0;
@@ -1107,6 +1199,102 @@ function init3D() {
     }
   }
 
+  /* =====================================================================
+     HOLOGRAPHIC PRISM MODE  (Pepper's-ghost pyramid optics)
+     ---------------------------------------------------------------------
+     THE PHYSICS. A clear plastic frustum (small end DOWN on the screen, faces tilted 45 degrees) acts like four
+     45-degree mirrors. Light leaves the screen going straight UP (direction d = (0,0,1)). A face whose inward
+     normal is n = (0, +0.707, -0.707) reflects it:   r = d - 2(d.n)n = (0,1,0)   i.e. it turns 90 degrees and
+     travels HORIZONTALLY toward the viewer on the opposite side. Result: the picture drawn on one region of the
+     screen appears as a floating, upright image seen from the OPPOSITE side of the pyramid.
+
+     THE MAP. A 45-degree mirror swaps the screen's depth axis with the vertical axis, so a pixel that is
+     distance rho from the screen centre appears at height rho in the air. Therefore:
+         * image "up"  must point AWAY from the screen centre            -> each view is rotated so its top faces outward
+         * the region at screen direction p is seen by the viewer standing at -p (across the pyramid)
+         * so the camera that renders region p must sit on the -p side of the planet and look at it.
+     THE MATRIX (per view, p = (px,py) in screen space with +y UP):
+         world position of camera   C = ( -px, +elev, +py ) * R           (screen up = world -Z = "north")
+         in-plane roll              beta = atan2(-px, py)                   (angle from screen-up to p, counter-clockwise)
+         camera.rotateZ(-beta)      (rolling a camera one way rotates the picture the other way, hence the minus)
+       top    p=( 0, 1): C on +Z (south), beta =   0   -> upright
+       bottom p=( 0,-1): C on -Z (north), beta = 180   -> upside-down on screen (appears upright in the air)
+       left   p=(-1, 0): C on +X (east),  beta =  90   -> rotated 90 degrees counter-clockwise
+       right  p=( 1, 0): C on -X (west),  beta = -90   -> rotated 90 degrees clockwise
+     Each view is drawn into its own square with setViewport + setScissor, so one WebGL canvas holds all four.
+     ===================================================================== */
+  const holo = { on: false, scale: 1, pitch: .25, flip: false, gap: -1 };
+  const HOLO_VIEWS = [{ px: 0, py: 1 }, { px: 0, py: -1 }, { px: -1, py: 0 }, { px: 1, py: 0 }].map(v => ({ ...v, beta: Math.atan2(-v.px, v.py) }));
+  const holoCam = new THREE.PerspectiveCamera(35, 1, .1, 100), ELEV = .2, COSE = Math.cos(ELEV), SINE = Math.sin(ELEV);   // slight look-down gives depth
+  const holoLight = new THREE.DirectionalLight(0xffffff, 2.2); holoLight.position.set(3, 2, 4); holoLight.visible = false; scene.add(holoLight);
+
+  function renderHolo() {                                  // everything here reuses objects: no allocation per frame = no memory growth
+    const W = box.clientWidth, H = box.clientHeight, m = Math.min(W, H);
+    const s = m * .27 * holo.scale, gap = s * .4;          // s = side of each view in px, gap = half the pyramid's footprint
+    if (gap !== holo.gap) { holo.gap = gap; $("holoGuideBox").style.width = $("holoGuideBox").style.height = (2 * gap) + "px"; }
+    planet.rotation.x = holo.pitch;                        // user pitch (drag) tilts the planet itself, so all 4 views agree
+    const R = planet.scale.x * 5.5;                        // camera distance so the planet fills ~60% of each square
+    renderer.setScissorTest(true);
+    renderer.setViewport(0, 0, W, H); renderer.setScissor(0, 0, W, H); renderer.setClearColor(0x000000, 1); renderer.clear();   // pure black everywhere
+    for (const v of HOLO_VIEWS) {
+      const x = W / 2 + v.px * (gap + s / 2) - s / 2;      // left edge of this view (CSS px, origin top-left)
+      const y = H / 2 - v.py * (gap + s / 2) - s / 2;      // top edge (screen +y is up, CSS y grows downward)
+      renderer.setViewport(x, H - y - s, s, s);            // WebGL's origin is the BOTTOM-left corner, so flip y
+      renderer.setScissor(x, H - y - s, s, s);
+      holoCam.position.set(-v.px * R * COSE, R * SINE, v.py * R * COSE);   // camera on the opposite side from the region
+      holoCam.lookAt(planet.position);
+      holoCam.rotateZ(-(v.beta + (holo.flip ? Math.PI : 0)));             // in-plane roll so the image "up" points outward
+      renderer.render(scene, holoCam);
+    }
+    renderer.setScissorTest(false); renderer.setViewport(0, 0, W, H);
+  }
+
+  // Interaction: drag / wheel, and (on phones) turning the device
+  let holoDrag = null, lastAlpha = null, orientOn = false;
+  renderer.domElement.addEventListener("pointerdown", e => { if (holo.on) holoDrag = [e.clientX, e.clientY]; });
+  addEventListener("pointerup", () => holoDrag = null);
+  addEventListener("pointermove", e => {
+    if (!holo.on || !holoDrag) return;
+    planet.rotation.y += (e.clientX - holoDrag[0]) * .01; holo.pitch = clamp(holo.pitch + (e.clientY - holoDrag[1]) * .01, -1.2, 1.2);
+    holoDrag = [e.clientX, e.clientY];
+  });
+  renderer.domElement.addEventListener("wheel", e => { if (!holo.on) return; e.preventDefault(); holo.scale = clamp(holo.scale * (1 - e.deltaY * .001), .5, 1.6); $("holoSize").value = holo.scale * 100; }, { passive: false });
+  function onOrient(e) {                                   // spinning the phone flat on the table (compass angle alpha) spins the planet
+    if (!holo.on || e.alpha == null) return;
+    if (lastAlpha !== null) { let d = e.alpha - lastAlpha; if (d > 180) d -= 360; if (d < -180) d += 360; planet.rotation.y += d * Math.PI / 180; }
+    lastAlpha = e.alpha;
+  }
+  async function enableOrientation() {
+    try {
+      if (typeof DeviceOrientationEvent !== "undefined" && typeof DeviceOrientationEvent.requestPermission === "function") { if (await DeviceOrientationEvent.requestPermission() !== "granted") return; }   // iPhones ask permission
+      if (!orientOn) { addEventListener("deviceorientation", onOrient); orientOn = true; }
+    } catch (e) {}
+  }
+  function enterHolo() {
+    if (flight.phase !== "orbit" || mode !== "lab") { $("holoToggle").checked = false; say("Return to the orbit view in the Lab tab first, then switch the hologram on.", true); return; }
+    holo.on = true; lastAlpha = null; document.body.classList.add("holo");
+    labObjs.forEach(o => o.visible = o === planet); star.visible = glow.visible = false; starPts.visible = false; starLightObj.visible = false;   // only the planet remains
+    holoLight.visible = true; scene.background.setHex(0x000000); controls.enabled = false;
+    enableOrientation();
+    try { document.documentElement.requestFullscreen && document.documentElement.requestFullscreen().catch(() => {}); } catch (e) {}
+    try { navigator.wakeLock && navigator.wakeLock.request("screen").catch(() => {}); } catch (e) {}
+    setTimeout(resize, 60); say("Hologram mode on. Put your pyramid in the middle of the screen, in a dark room.");
+  }
+  function exitHolo() {
+    if (!holo.on) return;
+    holo.on = false; document.body.classList.remove("holo"); $("holoToggle").checked = false; planet.rotation.x = 0;
+    labObjs.forEach(o => o.visible = true); star.visible = glow.visible = true; starPts.visible = true; starLightObj.visible = true; holoLight.visible = false;
+    scene.background.setHex(0x02030a); controls.enabled = true;
+    try { document.fullscreenElement && document.exitFullscreen(); } catch (e) {}
+    setTimeout(resize, 60);
+  }
+  hooks.exitHolo = exitHolo;
+  $("holoToggle").onchange = () => $("holoToggle").checked ? enterHolo() : exitHolo();
+  $("holoExit").onclick = exitHolo;
+  $("holoSize").oninput = () => holo.scale = $("holoSize").value / 100;
+  $("holoGuide").onchange = () => $("holoGuideBox").style.visibility = $("holoGuide").checked ? "visible" : "hidden";
+  $("holoFlip").onchange = () => holo.flip = $("holoFlip").checked;
+
   /* --- resize --- */
   function resize() { const w = box.clientWidth || 1, h = box.clientHeight || 1; renderer.setSize(w, h); camera.aspect = w / h; camera.updateProjectionMatrix(); }
   addEventListener("resize", resize); resize();
@@ -1129,7 +1317,7 @@ function init3D() {
       // Atmosphere tint: blue (habitable) / red haze (lava) / pale (ice) / tan (gas); thickness from greenhouse
       atmoMat.color.setRGB(.4 + .6 * cur.lava + .5 * cur.ice + .5 * cur.gas, .67 - .3 * cur.lava + .25 * cur.ice, 1 - .8 * cur.lava - .5 * cur.gas);
       atmoMat.opacity = curAtmo;
-      clouds.material.opacity = Math.min(.9, curAtmo * 2.7);                                   // thicker atmosphere = denser clouds
+      clouds.material.opacity = Math.min(.95, curAtmo * 2.7 + (weather ? weather.cloud / 300 : 0));                                   // thicker atmosphere = denser clouds
       clouds.material.color.setRGB(1 - .35 * cur.lava, 1 - .65 * cur.lava, 1 - .75 * cur.lava); // lava worlds get dark smoky clouds
       clouds.rotation.y += .0008;
       ringMat.opacity = target.inRing ? .38 : .2;                              // ring brightens when the planet is inside it
@@ -1153,7 +1341,7 @@ function init3D() {
     if (ft) { delta.copy(ft.position).sub(controls.target); camera.position.add(delta); controls.target.copy(ft.position); }
     if (flight.phase === "orbit") controls.update();   // OrbitControls only drives the camera in orbit view
     flightFrame(clock.getDelta());                        // landing / surface / take-off animation
-    renderer.render(scene, camera);
+    if (holo.on) { planet.position.set(0, 0, 0); renderHolo(); } else renderer.render(scene, camera);   // hologram mode draws 4 views instead of 1
   }
   sceneReady = true;
   hooks.setMode(mode);
