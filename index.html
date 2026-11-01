@@ -91,6 +91,23 @@
   #brainCanvas { width:100%; height:230px; display:block; border-radius:10px; background:radial-gradient(circle at 50% 40%,#10173a,#04060f); touch-action:pan-y; cursor:grab; }
   .legend { font-size:.72rem; color:var(--muted); margin-top:6px; line-height:1.4; }
   #xaiLog { margin:0; background:#050912; color:#9fd8ff; font:.74rem/1.5 ui-monospace,Consolas,monospace; white-space:pre-wrap; height:170px; overflow:auto; padding:8px; border-radius:8px; border:1px solid #1d2a55; }
+  .deploy { background:linear-gradient(90deg,#6ee7ff,#7c4dff); box-shadow:0 0 18px rgba(124,77,255,.6); animation:deployGlow 2.2s ease-in-out infinite; color:#fff; margin-bottom:14px; }
+  @keyframes deployGlow { 50% { box-shadow:0 0 34px rgba(110,231,255,.95); } }
+  body.spacewalk { grid-template-columns:300px 1fr; }
+  body.spacewalk .tabs, body.spacewalk .tab, body.spacewalk #nova, body.spacewalk #hud { display:none; }
+  body.spacewalk .walk { display:block; }
+  .vrow { font-size:.88rem; margin:8px 0 4px; font-variant-numeric:tabular-nums; }
+  #visor { position:absolute; inset:0; z-index:8; pointer-events:none; background:radial-gradient(ellipse at center, transparent 52%, rgba(0,0,0,.55) 82%, rgba(0,0,0,.93) 100%); }
+  #visor::before { content:""; position:absolute; inset:14px; border:2px solid rgba(110,220,255,.35); border-radius:46% / 38%; box-shadow:inset 0 0 34px rgba(110,220,255,.16), 0 0 14px rgba(110,220,255,.25); }
+  #visor::after { content:""; position:absolute; left:11%; top:7%; width:30%; height:9%; border-radius:50%; background:linear-gradient(120deg,rgba(255,255,255,.2),transparent); transform:rotate(-12deg); }
+  #reticle { position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); z-index:9; pointer-events:none; text-align:center; color:#8dffe0; font:600 .78rem ui-monospace,Consolas,monospace; text-shadow:0 0 6px #0b3; white-space:nowrap; }
+  #reticle .rg { width:46px; height:46px; margin:0 auto 8px; border:2px solid #8dffe0; border-radius:50%; box-shadow:0 0 10px #4dffc0; position:relative; }
+  #reticle .rg::before { content:""; position:absolute; left:50%; top:50%; width:6px; height:6px; margin:-3px 0 0 -3px; border-radius:50%; background:#8dffe0; }
+  #reticle.lock .rg { border-color:#4cff8a; box-shadow:0 0 16px #4cff8a; }
+  #dockAlert { position:absolute; left:50%; bottom:90px; transform:translateX(-50%); z-index:10; background:rgba(0,40,20,.88); border:2px solid #4cff8a; color:#b6ffd0; padding:10px 18px; border-radius:12px; font:700 .88rem ui-monospace,Consolas,monospace; text-align:center; max-width:90%; animation:alertFlash 1s steps(2) infinite; }
+  @keyframes alertFlash { 50% { opacity:.55; } }
+  #lockHint { position:absolute; left:50%; top:14%; transform:translateX(-50%); z-index:10; background:rgba(15,20,36,.88); color:#fff; padding:8px 14px; border-radius:10px; font-size:.85rem; pointer-events:none; }
+  body:not(.spacewalk) #visor, body:not(.spacewalk) #reticle, body:not(.spacewalk) #dockAlert, body:not(.spacewalk) #lockHint { display:none; }
   #nova { position:absolute; left:14px; bottom:14px; right:14px; max-width:430px; display:flex; gap:10px; align-items:flex-end; z-index:6; pointer-events:none; }
   #nova > * { pointer-events:auto; }
   #novaFace { width:54px; height:54px; flex:none; border-radius:50%; position:relative; background:radial-gradient(circle at 35% 30%,#b8fff0,#4de0c0 60%,#2aa58f); box-shadow:0 0 18px rgba(77,224,192,.55); animation:novaFloat 3s ease-in-out infinite; }
@@ -128,6 +145,14 @@
   <p class="tag">The AI Exoplanet Laboratory</p>
   <div class="tabs">
     <button class="on" data-tab="lab">🧪 Lab</button><button data-tab="solar">🪐 Planets</button><button data-tab="stars">⭐ Stars</button><button data-tab="quiz">🎯 Quiz</button><button data-tab="help">❓ Help</button>
+  </div>
+  <button class="land deploy" id="deployBtn">👨‍🚀 DEPLOY ASTRONAUT SPACE WALK</button>
+  <div class="card" id="vitalsCard" hidden style="margin-bottom:16px">
+    <div class="xhead" style="color:#7fd0ff">🩺 SUIT VITAL SIGNS</div>
+    <div class="vrow">Suit Oxygen: <b id="vO2">100</b>%</div><div class="bar"><div id="vO2bar" style="width:100%;background:#4de0c0"></div></div>
+    <div class="vrow">Jetpack Fuel: <b id="vFuel">100</b>%</div><div class="bar"><div id="vFuelbar" style="width:100%;background:#ffb454"></div></div>
+    <div class="vrow">Current Speed: <b id="vSpeed">0.0</b> km/s</div>
+    <div class="legend" style="margin-top:12px">W / S thrust forward / back · A / D strafe · Space up · Shift down · X brake · mouse looks · E docks · 1–9 and 0 warp to a planet (5% fuel) · Esc frees the mouse. Speeds are game scale.</div>
   </div>
   <div class="tab on" id="tab-lab">
     <button class="land" id="landBtn">🚀 LAND ON PLANET SURFACE</button>
@@ -209,6 +234,10 @@
   <div id="flash"></div><div id="hud"></div>
   <div id="holoBar"><button id="holoExit">✖ Exit hologram</button><label>Size <input type="range" id="holoSize" min="50" max="160" value="100"></label><label><input type="checkbox" id="holoGuide" checked> Guide</label><label><input type="checkbox" id="holoFlip"> Flip</label></div>
   <div id="holoGuideBox"></div>
+  <div id="visor"></div>
+  <div id="reticle"><div class="rg"></div><div id="tgtText">—</div></div>
+  <div id="dockAlert" style="display:none"></div>
+  <div id="lockHint" style="display:none">🖱️ Click the view to lock the mouse · Esc releases it</div>
   <button class="walk" id="walkBtn">⬆ Walk</button><button class="walk" id="jumpBtn">⤒ Jump</button>
   <div id="nova" aria-live="polite">
     <div id="novaFace"><i></i></div>
@@ -231,7 +260,7 @@
 
 // Nova's state lives at the very top so every function below (including the first update() call) can safely use it.
 const nova = { on: true, ready: false, moved: false, t: 0, t2: 0, lastCls: null, voice: null };
-let isSurfaceMode = false, lastSR = null, weather = null, brain = null;   // weather = the synced Earth city (or null)   // global view-mode flag + the latest {sliders, ML result} for the surface engine
+let isSurfaceMode = false, isSpaceWalk = false, lastSR = null, weather = null, brain = null;   // isSpaceWalk: first-person astronaut mode is on   // weather = the synced Earth city (or null)   // global view-mode flag + the latest {sliders, ML result} for the surface engine
 
 /* ---------- 1. PHYSICS + DECISION TREE ---------- */
 const HZ_INNER = 0.8, HZ_OUTER = 1.5;       // Goldilocks zone edges in AU (also drawn as the green ring)
@@ -523,6 +552,11 @@ async function syncWeather() {
 $("syncBtn").onclick = syncWeather;
 $("cityInput").addEventListener("keydown", e => { if (e.key === "Enter") syncWeather(); });
 $("wxClear").onclick = () => { weather = null; $("wxStatus").textContent = "Weather link cleared."; update(); };
+
+function setTabUI(name) {                       // switch the sidebar tab WITHOUT touching the 3D scene
+  document.querySelectorAll(".tabs button, .tab").forEach(e => e.classList.remove("on"));
+  document.querySelector(`.tabs button[data-tab="${name}"]`).classList.add("on"); $("tab-" + name).classList.add("on");
+}
 
 /* ---------- NOVA BUTTONS ---------- */
 $("novaMute").onclick = () => {
@@ -1146,8 +1180,8 @@ function init3D() {
       rg.rotation.x = Math.PI / 2.2; mesh.add(rg);
     }
     const pts = []; for (let k = 0; k < 128; k++) pts.push(new THREE.Vector3(Math.cos(k / 128 * 6.2832) * rad, 0, Math.sin(k / 128 * 6.2832) * rad));
-    solar.add(new THREE.LineLoop(new THREE.BufferGeometry().setFromPoints(pts), new THREE.LineBasicMaterial({ color: 0x33415f })));
-    return { mesh, rad, ang: Math.random() * 6.28, r: p.r };
+    const line = new THREE.LineLoop(new THREE.BufferGeometry().setFromPoints(pts), new THREE.LineBasicMaterial({ color: 0x33415f })); solar.add(line);
+    return { mesh, rad, rad0: rad, line, ang: Math.random() * 6.28, r: p.r };
   });
 
   // Earth's Moon (orbits Earth, not the Sun) and the asteroid belt (a ring of 700 tiny rocks around Ceres' orbit)
@@ -1159,7 +1193,7 @@ function init3D() {
   const beltR = 5 + PLANETS.findIndex(p => p.n === "Ceres") * 3.2, bp = [];
   for (let k = 0; k < 700; k++) { const a = Math.random() * 6.2832, r = beltR + (Math.random() - .5) * 2.2; bp.push(Math.cos(a) * r, (Math.random() - .5) * .5, Math.sin(a) * r); }
   const bg = new THREE.BufferGeometry(); bg.setAttribute("position", new THREE.Float32BufferAttribute(bp, 3));
-  solar.add(new THREE.Points(bg, new THREE.PointsMaterial({ color: 0x8c8c99, size: 1.6, sizeAttenuation: false })));
+  const belt = new THREE.Points(bg, new THREE.PointsMaterial({ color: 0x8c8c99, size: 1.6, sizeAttenuation: false })); solar.add(belt);
 
   // Everything that belongs only to the Lab scene (hidden in other tabs)
   const labObjs = [ring, planet, ...scene.children.filter(o => o.geometry && o.geometry.type === "TorusGeometry")];
@@ -1320,7 +1354,7 @@ function init3D() {
 
   // First-person controls: keys + drag to look. Gravity comes from the Mass slider, so jumps are floaty on small planets.
   const keys = {}, me = { x: 0, y: 0, z: 0, vy: 0, yaw: 0, pitch: -.08, ground: true }; let lookDrag = null, hudT = 0;
-  addEventListener("keydown", e => { if (flight.phase !== "surface" || /INPUT|SELECT|TEXTAREA/.test(e.target.tagName)) return; keys[e.code] = true; if (e.code === "Space" || e.code.startsWith("Arrow")) e.preventDefault(); });
+  addEventListener("keydown", e => { if ((flight.phase !== "surface" && flight.phase !== "walk") || /INPUT|SELECT|TEXTAREA/.test(e.target.tagName)) return; keys[e.code] = true; if (e.code === "Space" || e.code.startsWith("Arrow")) e.preventDefault(); });
   addEventListener("keyup", e => keys[e.code] = false);
   renderer.domElement.addEventListener("pointerdown", e => { if (flight.phase === "surface") lookDrag = [e.clientX, e.clientY]; });
   addEventListener("pointerup", () => { lookDrag = null; keys.Walk = false; });
@@ -1352,8 +1386,11 @@ function init3D() {
     if (holo.on) exitHolo();
     if (flight.phase !== "orbit" || mode !== "lab" || !lastSR) return;
     if (lastSR.r.cls === "gas") { say("This is a gas giant, so there is no solid ground to land on. Lower the mass below eight Earth masses and try again!", true); return; }
+    landObj = planet; landRad = planet.scale.x; landedFromWalk = false; beginPlunge(); return;
+  }
+  function beginPlunge() {                                // shared by the LAND button and by docking from a space walk
     isSurfaceMode = true; flight.phase = "plunge"; flight.t = 0;
-    flight.dir.copy(camera.position).sub(planet.position); flight.d0 = flight.dir.length(); flight.dir.normalize();
+    flight.dir.copy(camera.position).sub(landObj.position); flight.d0 = flight.dir.length(); flight.dir.normalize();
     controls.enabled = false; $("landBtn").disabled = true; $("landBtn").textContent = "🛸 DESCENDING…";
     say("Starting atmospheric entry. Hold on tight!");
   }
@@ -1375,13 +1412,14 @@ function init3D() {
     if (flight.phase !== "surface") return;
     flight.phase = "flash"; $("flash").style.opacity = 1; $("landBtn").disabled = true;
     setTimeout(() => {
-      leaveSurfaceVisuals(); flight.dir.set(.5, .35, .8).normalize(); flight.t = 0; flight.d0 = planet.scale.x * 1.01; flight.phase = "ascend";
+      leaveSurfaceVisuals(); if (landedFromWalk) { labObjs.forEach(o => o.visible = false); solar.visible = true; }   // back to the solar-system scene
+      flight.dir.set(.5, .35, .8).normalize(); flight.t = 0; flight.d0 = landRad * 1.01; flight.phase = "ascend";
       $("flash").style.opacity = 0; $("landBtn").textContent = "🛸 LIFTING OFF…"; say("Lifting off! Back to orbit.");
     }, 380);
   }
   hooks.exitSurface = () => {                             // instant exit (used when the student switches tabs)
     if (flight.phase === "orbit") return;
-    leaveSurfaceVisuals(); flight.phase = "orbit"; isSurfaceMode = false; controls.enabled = true;
+    landedFromWalk = false; landObj = planet; leaveSurfaceVisuals(); flight.phase = "orbit"; isSurfaceMode = false; controls.enabled = true;
     $("landBtn").disabled = false; $("landBtn").textContent = "🚀 LAND ON PLANET SURFACE"; $("flash").style.opacity = 0;
   };
   hooks.markSurface = () => { surfaceDirty = true; };
@@ -1391,17 +1429,20 @@ function init3D() {
     if (flight.phase === "plunge") {
       flight.t = Math.min(1, flight.t + dt / 2.4); const e = ease(flight.t);
       // LERP the camera's distance from the planet centre down to just inside the cloud shell (cloud radius = 1.045 x planet radius)
-      const dist = lerp(flight.d0, planet.scale.x * 1.01, e);
-      camera.position.copy(planet.position).addScaledVector(flight.dir, dist); camera.lookAt(planet.position);
+      const dist = lerp(flight.d0, landRad * 1.01, e);
+      camera.position.copy(landObj.position).addScaledVector(flight.dir, dist); camera.lookAt(landObj.position);
       camera.fov = 50 + 30 * e * e; camera.updateProjectionMatrix();          // widening field of view = speed rush
       if (flight.t >= 1) { flight.phase = "flash"; $("flash").style.opacity = 1; setTimeout(enterSurface, 400); }
     } else if (flight.phase === "ascend") {
       flight.t = Math.min(1, flight.t + dt / 1.8); const e = ease(flight.t);
-      camera.position.copy(planet.position).addScaledVector(flight.dir, lerp(flight.d0, 9, e)); camera.lookAt(planet.position);
-      if (flight.t >= 1) {
+      camera.position.copy(landObj.position).addScaledVector(flight.dir, lerp(flight.d0, 9, e)); camera.lookAt(landObj.position);
+      if (flight.t >= 1 && landedFromWalk) resumeWalk();       // landed from a space walk: go back to flying
+      else if (flight.t >= 1) {
         flight.phase = "orbit"; isSurfaceMode = false; controls.target.copy(planet.position); controls.enabled = true; if (controls.sync) controls.sync();
         $("landBtn").disabled = false; $("landBtn").textContent = "🚀 LAND ON PLANET SURFACE";
       }
+    } else if (flight.phase === "walk") {
+      walkFrame(dt);
     } else if (flight.phase === "surface") {
       if (surfaceDirty) buildSurface();
       surfaceFrame(dt);
@@ -1503,6 +1544,168 @@ function init3D() {
   $("holoSize").oninput = () => holo.scale = $("holoSize").value / 100;
   $("holoGuide").onchange = () => $("holoGuideBox").style.visibility = $("holoGuide").checked ? "visible" : "hidden";
   $("holoFlip").onchange = () => holo.flip = $("holoFlip").checked;
+
+  /* =====================================================================
+     FIRST-PERSON ASTRONAUT SPACE WALK
+     ---------------------------------------------------------------------
+     Scale: 1 AU = 5 scene units (the same as the Lab). In walk mode the planets move to their REAL distances
+     (Earth 5 units, Mars 7.6, Jupiter 26, Neptune 150) so the AU readout is true to the Solar System.
+     (Planet sizes are exaggerated so you can see them, and speeds are game-scale: 1 unit/s = 1000 km/s.)
+
+     THE VECTOR MATH (all inside walkFrame, once per frame, with dt = seconds since the last frame)
+       1. Look direction from two angles (yaw about Y, pitch about X):
+              f = ( -sin(yaw)cos(pitch),  sin(pitch),  -cos(yaw)cos(pitch) )     the unit vector the camera faces
+              r = (  cos(yaw),            0,           -sin(yaw)              )     "right", always horizontal
+              u = ( 0, 1, 0 )                                                      jetpack "up", independent of the view
+       2. Thrust: a = W/S * f  +  D/A * r  +  Space/Shift * u. Normalise a, so flying diagonally is not faster,
+          then scale by the engine strength: a = THRUST * a / |a|.
+       3. Newton's second law, integrated (explicit Euler):      v <- v + a*dt        p <- p + v*dt
+       4. Space has almost no friction, so instead of stopping when you release a key the velocity decays slowly
+          and exponentially:   v <- v * exp(-k*dt).   Using exp() makes the glide identical at 30 or 144 FPS.
+          (X = retro-thrusters: the same formula with a much bigger k, at the cost of fuel.)
+       5. Closest planet and the HUD distance: for each body,   d = c - p   (vector from me to its centre),
+          distance = |d| - radius,   direction = d/|d|,   "am I looking at it?" = f . (d/|d|) = cos(angle).
+          Approach speed = v . (d/|d|). Dividing a distance in scene units by 5 gives AU.
+       6. Docking trigger: |d| < 2*radius + 1.2. Collisions: if |d| < radius + .25, push me out along -d/|d| and
+          cancel the inward part of v:  v <- v - (v . n) n, with n the outward surface normal.
+     No new vectors are created per frame (all are reused), so there is no garbage-collector stutter.
+     ===================================================================== */
+  const UNITS_PER_AU = 5, KMS_PER_UNIT = 1000, THRUST = 9, DRAG = .35, VMAX = 45;   // units/s^2, damping per second, top speed
+  const walk = { vel: new THREE.Vector3(), yaw: 0, pitch: 0, oxygen: 100, fuel: 100, locked: false, dock: -1, hudT: 0, tgtName: "" };
+  const F = new THREE.Vector3(), Rt = new THREE.Vector3(), UPV = new THREE.Vector3(0, 1, 0), acc = new THREE.Vector3(), tmp = new THREE.Vector3();
+  const bodies = [{ name: "Sun", obj: star, r: 1.5, i: -1 }, ...sol.map((p, i) => ({ name: PLANETS[i].n, obj: p.mesh, r: p.r, i }))];
+  const EARTH = PLANETS.findIndex(p => p.n === "Earth"), CERES = PLANETS.findIndex(p => p.n === "Ceres");
+  let landObj = planet, landRad = 1, landedFromWalk = false;
+  const eTgt = $("tgtText"), eAlert = $("dockAlert"), eRet = $("reticle");
+
+  function layoutTrue(on) {                                 // move planets (and their orbit rings + the belt) to real AU distances, or back
+    sol.forEach((p, i) => { p.rad = on ? Math.max(PLANETS[i].au * UNITS_PER_AU, 2.6) : p.rad0; p.line.scale.set(p.rad / p.rad0, 1, p.rad / p.rad0); });
+    const k = on ? sol[CERES].rad / beltR : 1; belt.scale.set(k, 1, k);
+  }
+  function faceTowards(v) {                                 // invert f(yaw, pitch): which angles make the camera face vector v?
+    tmp.copy(v).normalize(); walk.yaw = Math.atan2(-tmp.x, -tmp.z); walk.pitch = Math.asin(clamp(tmp.y, -1, 1));
+  }
+  function walkUI(on) {
+    isSpaceWalk = on; document.body.classList.toggle("spacewalk", on); $("vitalsCard").hidden = !on;
+    $("deployBtn").textContent = on ? "🛬 RETURN TO CONSOLE" : "👨‍🚀 DEPLOY ASTRONAUT SPACE WALK";
+    if (!on && document.exitPointerLock) document.exitPointerLock();
+  }
+  function startWalk() {
+    if (flight.phase !== "orbit") { say("Return to the orbit view first, then deploy the astronaut.", true); return; }
+    if (holo.on) exitHolo();
+    mode = "solar"; setTabUI("solar"); hooks.setMode("solar");     // show the Solar System (this also resets the camera)
+    layoutTrue(true); controls.enabled = false; flight.phase = "walk";
+    camera.fov = 70; camera.updateProjectionMatrix(); camera.rotation.order = "YXZ";    // YXZ = yaw first, then pitch: the standard first-person order
+    const e = sol[EARTH]; tmp.set(Math.cos(e.ang), 0, Math.sin(e.ang));                  // unit vector from the Sun toward Earth
+    const ep = new THREE.Vector3(tmp.x * e.rad, 0, tmp.z * e.rad);
+    camera.position.copy(ep).addScaledVector(tmp, 4).y += 1.2;                          // spawn 4 units beyond Earth, a little above
+    faceTowards(ep.sub(camera.position)); walk.vel.set(0, 0, 0); walk.fuel = 100; walk.oxygen = 100; walk.dock = -1;
+    walkUI(true); if (renderer.domElement.requestPointerLock) { try { renderer.domElement.requestPointerLock(); } catch (er) {} }
+    say("Astronaut deployed. Use W A S D to fly and Space and Shift to go up and down. Press E when the dock alert appears.");
+  }
+  function endWalk() {
+    if (flight.phase !== "walk") return;
+    walkUI(false); layoutTrue(false); flight.phase = "orbit"; controls.enabled = true;
+    camera.fov = 50; camera.updateProjectionMatrix(); camera.rotation.order = "XYZ";
+    document.querySelector('.tabs button[data-tab="solar"]').click();     // restores sidebar tab + the overview camera
+  }
+  function dockAndLand(i) {                                 // E pressed while Orbit Locked
+    const p = PLANETS[i];
+    $("distance").value = p.au; $("mass").value = p.m; $("ghg").value = p.g; nova.moved = true; update();   // the Lab now describes THIS world
+    if (lastSR.r.cls === "gas") { say(`${p.n} is a gas giant, so there is no solid ground to land on.`, true); return; }
+    landObj = sol[i].mesh; landRad = sol[i].r; landedFromWalk = true;
+    walkUI(false); setTabUI("lab"); mode = "lab";             // sidebar shows the Lab (surface log, return button); the 3D scene stays in solar view for the dive
+    beginPlunge();                                            // same cinematic dive as the LAND button, but into the planet we docked with
+  }
+  function resumeWalk() {                                   // after lifting off from a docked planet: back to flying
+    landedFromWalk = false; isSurfaceMode = false; landObj = planet; flight.phase = "walk"; mode = "solar"; setTabUI("solar");
+    camera.fov = 70; camera.updateProjectionMatrix(); camera.rotation.order = "YXZ";
+    faceTowards(tmp.copy(camera.position).multiplyScalar(-1)); walk.vel.set(0, 0, 0); walk.fuel = 100; walk.oxygen = Math.min(100, walk.oxygen + 30);   // refuelled
+    walkUI(true); $("landBtn").disabled = false; $("landBtn").textContent = "🚀 LAND ON PLANET SURFACE";
+  }
+
+  function walkFrame(dt) {
+    dt = Math.min(dt, .05);
+    const cp = Math.cos(walk.pitch);
+    F.set(-Math.sin(walk.yaw) * cp, Math.sin(walk.pitch), -Math.cos(walk.yaw) * cp);   // f: where I am facing
+    Rt.set(Math.cos(walk.yaw), 0, -Math.sin(walk.yaw));                                // r: my right-hand side
+    const fwd = (keys.KeyW || keys.ArrowUp || keys.Walk ? 1 : 0) - (keys.KeyS || keys.ArrowDown ? 1 : 0);
+    const side = (keys.KeyD ? 1 : 0) - (keys.KeyA ? 1 : 0);
+    const vert = (keys.Space || keys.Jump ? 1 : 0) - (keys.ShiftLeft || keys.ShiftRight ? 1 : 0); keys.Jump = false;
+    acc.set(0, 0, 0).addScaledVector(F, fwd).addScaledVector(Rt, side).addScaledVector(UPV, vert);      // a = fwd*f + side*r + vert*u
+    if (acc.lengthSq() > 0 && walk.fuel > 0) {
+      acc.normalize().multiplyScalar(THRUST); walk.vel.addScaledVector(acc, dt);       // v <- v + a dt
+      walk.fuel = Math.max(0, walk.fuel - .6 * dt);                                    // thrusting burns 0.6% fuel per second
+    }
+    if (keys.KeyX && walk.fuel > 0 && walk.vel.lengthSq() > .01) { walk.vel.multiplyScalar(Math.exp(-3 * dt)); walk.fuel = Math.max(0, walk.fuel - .3 * dt); }   // retro-thrusters
+    walk.vel.multiplyScalar(Math.exp(-DRAG * dt));                                     // gentle deep-space damping: v <- v e^(-k dt)
+    const sp = walk.vel.length(); if (sp > VMAX) walk.vel.multiplyScalar(VMAX / sp);   // speed limit
+    camera.position.addScaledVector(walk.vel, dt);                                     // p <- p + v dt
+    if (camera.position.length() > 380) { camera.position.setLength(380); walk.vel.multiplyScalar(0); }   // stay inside the star sphere
+    walk.oxygen = Math.max(0, walk.oxygen - .08 * dt);
+
+    // One pass over every body: collisions, nearest body, body I am heading toward, and docking range
+    const speed = walk.vel.length(); let near = null, nearD = 1e9, lock = null, lockD = 1e9, dockI = -1, dockD = 1e9;
+    for (const b of bodies) {
+      tmp.copy(b.obj.position).sub(camera.position);                                   // d = c - p
+      const len = tmp.length(), dot = len > 1e-6 ? tmp.dot(speed > .3 ? walk.vel : F) / (len * (speed > .3 ? speed : 1)) : 1;   // cos(angle) between my heading and the body
+      if (len < b.r + .25) {                                                           // collision: slide off the surface
+        tmp.divideScalar(len || 1); camera.position.copy(b.obj.position).addScaledVector(tmp, -(b.r + .25));
+        const vn = walk.vel.dot(tmp); if (vn > 0) walk.vel.addScaledVector(tmp, -1.2 * vn);
+      }
+      const surf = Math.max(0, len - b.r);                                             // distance to the SURFACE, not the centre
+      if (surf < nearD) { nearD = surf; near = b; }
+      if (dot > .94 && surf < lockD) { lockD = surf; lock = b; }                       // inside a ~20 degree cone around my heading
+      if (b.i >= 0 && len < b.r * 2 + 1.2 && len < dockD) { dockD = len; dockI = b.i; }
+    }
+    if (dockI !== walk.dock) {                                                         // docking state changed
+      walk.dock = dockI;
+      if (dockI >= 0) say(lastSR && ["Jupiter", "Saturn", "Uranus", "Neptune"].includes(PLANETS[dockI].n) ? `${PLANETS[dockI].n} is a gas giant.` : `Orbit locked around ${PLANETS[dockI].n}. Press E to land.`);
+    }
+    camera.rotation.set(walk.pitch, walk.yaw, 0);
+
+    if ((walk.hudT += dt) > .1) {                                                      // update the DOM 10 times a second, not 60
+      walk.hudT = 0;
+      const t = lock || near, d = lock ? lockD : nearD;
+      tmp.copy(t.obj.position).sub(camera.position).normalize(); const closing = walk.vel.dot(tmp) / UNITS_PER_AU;   // approach speed in AU/s
+      eTgt.textContent = `${lock ? "🎯 LOCKED" : "◎ NEAREST"}: ${t.name} · ${(d / UNITS_PER_AU).toFixed(2)} AU · ${closing >= 0 ? "closing" : "receding"} ${Math.abs(closing).toFixed(2)} AU/s`;
+      eRet.classList.toggle("lock", !!lock);
+      if (walk.dock >= 0) {
+        const gas = ["Jupiter", "Saturn", "Uranus", "Neptune"].includes(PLANETS[walk.dock].n);
+        eAlert.style.display = "block"; eAlert.textContent = gas ? `Gas giant detected (${PLANETS[walk.dock].n}). No solid surface to land on.` : "Orbit Locked. Press 'E' to establish planetary landing protocol.";
+      } else eAlert.style.display = walk.fuel <= 0 ? "block" : "none", eAlert.textContent = walk.fuel <= 0 ? "Jetpack empty. You are drifting: dock with a planet to refuel." : "";
+      $("vO2").textContent = Math.round(walk.oxygen); $("vO2bar").style.width = walk.oxygen + "%";
+      $("vFuel").textContent = Math.round(walk.fuel); $("vFuelbar").style.width = walk.fuel + "%";
+      $("vSpeed").textContent = (speed * KMS_PER_UNIT).toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+      if (walk.oxygen <= 0) { say("Suit oxygen depleted. Returning you to the console."); endWalk(); }
+    }
+  }
+
+  // Input bindings (added once; each handler returns immediately when the walk is not active, so they cost nothing otherwise)
+  addEventListener("keydown", e => {
+    if (flight.phase !== "walk" || e.repeat || /INPUT|SELECT|TEXTAREA/.test(e.target.tagName)) return;
+    if (e.code === "KeyE" && walk.dock >= 0) dockAndLand(walk.dock);
+    const m = /^Digit(\d)$/.exec(e.code);                                              // quick-warp: 1..9 = Mercury..Neptune order, 0 = Pluto
+    if (m && walk.fuel >= 5) {
+      const i = m[1] === "0" ? PLANETS.length - 1 : +m[1] - 1, b = bodies[i + 1];
+      if (b) {
+        tmp.set(-b.obj.position.z, 0, b.obj.position.x).normalize(); camera.position.copy(b.obj.position).addScaledVector(tmp, b.r * 2.6 + 1.5);   // park beside the planet along its orbit direction (the tangent), so neighbouring planets are not in the way
+        faceTowards(tmp.copy(b.obj.position).sub(camera.position)); walk.vel.set(0, 0, 0); walk.fuel -= 5;
+      }
+    }
+  });
+  document.addEventListener("pointerlockchange", () => { walk.locked = document.pointerLockElement === renderer.domElement; $("lockHint").style.display = isSpaceWalk && !walk.locked ? "block" : "none"; });
+  document.addEventListener("mousemove", e => {                                        // locked mouse: movementX/Y are raw deltas, no cursor limits
+    if (!walk.locked || flight.phase !== "walk") return;
+    walk.yaw -= e.movementX * .0022; walk.pitch = clamp(walk.pitch - e.movementY * .0022, -1.5, 1.5);
+  });
+  renderer.domElement.addEventListener("click", () => { if (flight.phase === "walk" && !walk.locked && renderer.domElement.requestPointerLock) renderer.domElement.requestPointerLock(); });
+  let wDrag = null;                                                                    // fallback for touch screens: drag to look
+  renderer.domElement.addEventListener("pointerdown", e => { if (flight.phase === "walk" && e.pointerType === "touch") wDrag = [e.clientX, e.clientY]; });
+  addEventListener("pointerup", () => wDrag = null);
+  addEventListener("pointermove", e => { if (!wDrag) return; walk.yaw -= (e.clientX - wDrag[0]) * .005; walk.pitch = clamp(walk.pitch - (e.clientY - wDrag[1]) * .005, -1.5, 1.5); wDrag = [e.clientX, e.clientY]; });
+  $("deployBtn").onclick = () => isSpaceWalk ? endWalk() : startWalk();
+  hooks.walkDebug = () => ({ p: camera.position.toArray().map(v => +v.toFixed(2)), v: walk.vel.toArray().map(v => +v.toFixed(2)), dock: walk.dock, fuel: +walk.fuel.toFixed(1), phase: flight.phase });
 
   /* --- resize --- */
   function resize() { const w = box.clientWidth || 1, h = box.clientHeight || 1; renderer.setSize(w, h); camera.aspect = w / h; camera.updateProjectionMatrix(); }
