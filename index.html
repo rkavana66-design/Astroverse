@@ -62,6 +62,20 @@
   .feat { display:grid; grid-template-columns:repeat(3,1fr); gap:10px; margin:22px 0 4px; font-size:.85rem; }
   .feat div { background:rgba(255,255,255,.07); border:1px solid rgba(255,255,255,.12); border-radius:12px; padding:12px; }
   .start { margin-top:18px; padding:14px 34px; font-size:1.05rem; font-weight:700; border:0; border-radius:999px; background:linear-gradient(90deg,#4de0c0,#7aa2ff); color:#06101a; cursor:pointer; }
+  #nova { position:absolute; left:14px; bottom:14px; right:14px; max-width:430px; display:flex; gap:10px; align-items:flex-end; z-index:6; pointer-events:none; }
+  #nova > * { pointer-events:auto; }
+  #novaFace { width:54px; height:54px; flex:none; border-radius:50%; position:relative; background:radial-gradient(circle at 35% 30%,#b8fff0,#4de0c0 60%,#2aa58f); box-shadow:0 0 18px rgba(77,224,192,.55); animation:novaFloat 3s ease-in-out infinite; }
+  #novaFace::before, #novaFace::after { content:""; position:absolute; top:19px; width:8px; height:12px; border-radius:50%; background:#0b1a2a; animation:novaBlink 4s infinite; }
+  #novaFace::before { left:14px; } #novaFace::after { right:14px; }
+  #novaFace i { position:absolute; left:19px; bottom:10px; width:16px; height:6px; border-bottom:3px solid #0b1a2a; border-radius:0 0 12px 12px; }
+  #novaFace.talk i { animation:novaTalk .25s infinite alternate; }
+  .nbox { flex:1; min-width:0; background:rgba(15,20,36,.88); color:#e8ebf5; border:1px solid rgba(255,255,255,.14); border-radius:16px 16px 16px 4px; padding:10px 12px; backdrop-filter:blur(6px); }
+  #novaBubble { font-size:.86rem; line-height:1.45; max-height:7.5em; overflow:auto; }
+  .nbtns { display:flex; gap:6px; margin-top:8px; }
+  .nbtns button { background:rgba(255,255,255,.1); color:#e8ebf5; border:1px solid rgba(255,255,255,.18); border-radius:999px; padding:5px 12px; font-size:.78rem; cursor:pointer; }
+  @keyframes novaFloat { 50% { transform:translateY(-4px); } }
+  @keyframes novaBlink { 0%,92%,100% { transform:scaleY(1); } 96% { transform:scaleY(.1); } }
+  @keyframes novaTalk { to { height:12px; width:12px; left:21px; border:3px solid #0b1a2a; border-radius:50%; } }
   @media (max-width:800px) {            /* phones: 3D view stays pinned on top, controls scroll underneath */
     html, body { height:auto; } body { display:block; }
     main { position:sticky; top:0; z-index:5; height:42vh; border-bottom:1px solid var(--line); }
@@ -69,6 +83,7 @@
     input[type=range] { height:30px; } .tabs button { padding:10px 4px; }
     .presets button, .list button, .opt { min-height:44px; }
     #welcome h2 { font-size:1.8rem; } .feat { grid-template-columns:1fr; }
+    #nova { left:8px; right:8px; bottom:8px; } #novaFace { width:42px; height:42px; } #novaFace::before, #novaFace::after { top:14px; width:6px; height:9px; } #novaFace::before { left:11px; } #novaFace::after { right:11px; } #novaFace i { left:14px; bottom:8px; width:14px; } #novaBubble { font-size:.78rem; max-height:4.4em; }
   }
 </style>
 </head>
@@ -148,7 +163,13 @@
   </div>
   <div id="status"></div>
 </aside>
-<main><div id="scene"></div></main>
+<main><div id="scene"></div>
+  <div id="nova" aria-live="polite">
+    <div id="novaFace"><i></i></div>
+    <div class="nbox"><div id="novaBubble">Hi! I'm Nova, your space guide. Press Start and I'll explain everything out loud.</div>
+      <div class="nbtns"><button id="novaSay">🗣️ Explain this</button><button id="novaMute" aria-label="Turn Nova's voice on or off">🔊</button></div></div>
+  </div>
+</main>
 
 <script>
 /* =====================================================================
@@ -326,7 +347,7 @@ function checkMission(s, r) {                 // runs on every slider move
   const m = MISSIONS[curMission];
   $("missionGoal").textContent = "🎯 " + m.d;
   if (m.goal(s, r)) {
-    if (!done.has(curMission)) { done.add(curMission); refreshMissionMenu(); }
+    if (!done.has(curMission)) { done.add(curMission); refreshMissionMenu(); clearTimeout(nova.t); say("Mission complete! Great job! " + m.why); }
     $("missionStatus").textContent = "✅ Mission complete! " + m.why;
   } else {
     $("missionStatus").textContent = `Not yet. Right now: ${r.label} (${r.score}%).`;
@@ -336,8 +357,19 @@ $("missionSel").onchange = () => { curMission = +$("missionSel").value; $("hintT
 $("hintBtn").onclick = () => { $("hintText").textContent = "💡 " + MISSIONS[curMission].hint; };
 refreshMissionMenu();
 
+/* ---------- NOVA BUTTONS ---------- */
+$("novaMute").onclick = () => {
+  nova.on = !nova.on; $("novaMute").textContent = nova.on ? "🔊" : "🔇";
+  if (!nova.on && "speechSynthesis" in window) speechSynthesis.cancel();
+};
+$("novaSay").onclick = () => {                  // "Explain this" re-reads whatever the student is looking at
+  const tab = document.querySelector(".tab.on").id.replace("tab-", "");
+  say({ lab: `${$("classLabel").textContent}. ${$("insight").textContent}`, solar: $("planetInfo").textContent,
+        stars: `${$("starClass").textContent}. ${$("starInfo").textContent}`, quiz: NOVA_TABS.quiz, help: NOVA_TABS.help }[tab], true);
+};
+
 /* ---------- WELCOME SCREEN + LIGHT/DARK THEME ---------- */
-$("startBtn").onclick = () => { $("welcome").classList.add("hide"); setTimeout(() => $("welcome").style.display = "none", 450); };
+$("startBtn").onclick = () => { nova.ready = true; say("Hi! I am Nova, your space guide. Try a mission, or tap any tab. I will explain everything. Use the speaker button to mute me."); $("welcome").classList.add("hide"); setTimeout(() => $("welcome").style.display = "none", 450); };
 $("startBtn").focus();
 function setTheme(t) {                        // the CSS variables switch with the data-theme attribute on <html>
   document.documentElement.dataset.theme = t; $("themeBtn").textContent = t === "light" ? "🌙" : "☀️";
@@ -351,6 +383,10 @@ function update() {                           // runs on EVERY slider move and p
   const s = readSliders(), r = analyze(s);
   updateUI(s, r);
   setTargets(s, r);
+  if (nova.ready && r.cls !== nova.lastCls) {       // Nova explains whenever the planet type changes
+    clearTimeout(nova.t); nova.t = setTimeout(() => say(`${r.label}. Habitability score ${r.score} percent. ` + $("insight").textContent), 600);
+  }
+  nova.lastCls = r.cls;
   checkMission(s, r);
 }
 
@@ -367,12 +403,39 @@ document.querySelectorAll(".presets button").forEach(b => b.addEventListener("cl
 update();
 
 /* ---------- 2b. TABS, SOLAR SYSTEM, STARS, QUIZ, HELP ---------- */
+/* ---------- NOVA: the cute voice guide. Uses the browser's built-in Web Speech API (speechSynthesis). ---------- */
+const nova = { on: true, ready: false, t: 0, t2: 0, lastCls: null, voice: null };
+const NOVA_TABS = {
+  lab:   "This is the Lab! Slide the distance, mass and greenhouse gas, and watch the planet change. A decision tree trained on NASA data decides if it is icy, habitable or lava.",
+  solar: "Welcome to the Solar System! Tap any planet and I will tell you its story.",
+  stars: "Stars are born, live and die! Change the mass and the life stage to see what happens.",
+  quiz:  "Quiz time! Read the question and pick the best answer.",
+  help:  "Got a doubt? Search for a word, or open a question and I will read the answer."
+};
+function pickVoice() {                          // prefer a friendly female English voice if the device has one
+  const vs = speechSynthesis.getVoices();
+  nova.voice = vs.find(v => /zira|samantha|jenny|aria|female|heera|neerja|google uk english female/i.test(v.name) && v.lang.startsWith("en")) || vs.find(v => v.lang.startsWith("en")) || null;
+}
+if ("speechSynthesis" in window) { pickVoice(); speechSynthesis.onvoiceschanged = pickVoice; }
+function say(text, force) {
+  $("novaBubble").textContent = text;           // the text bubble always shows, so it works as captions too
+  if ((!nova.on && !force) || !("speechSynthesis" in window)) return;
+  speechSynthesis.cancel();                     // stop whatever Nova was saying
+  const u = new SpeechSynthesisUtterance(text.replace(/[\u{1F000}-\u{1FFFF}\u2600-\u27BF]/gu, ""));
+  u.pitch = 1.5; u.rate = 1.02;                 // higher pitch = cuter voice
+  if (nova.voice) u.voice = nova.voice;
+  u.onstart = () => $("novaFace").classList.add("talk");
+  u.onend = u.onerror = () => $("novaFace").classList.remove("talk");
+  speechSynthesis.speak(u);
+}
+
 let mode = "lab", selected = null;          // mode decides which 3D scene is visible
 const hooks = {};                           // filled by init3D(): lets this UI code drive the 3D scene
 
 document.querySelectorAll(".tabs button").forEach(b => b.addEventListener("click", () => {
   document.querySelectorAll(".tabs button, .tab").forEach(e => e.classList.remove("on"));
   b.classList.add("on"); $("tab-" + b.dataset.tab).classList.add("on");
+  if (nova.ready) say(NOVA_TABS[b.dataset.tab]);
   if (["lab", "solar", "stars"].includes(b.dataset.tab)) { mode = b.dataset.tab; hooks.setMode && hooks.setMode(mode); applyStar(); }
 }));
 
@@ -397,6 +460,7 @@ function selectPlanet(i) {                  // called by the buttons AND by clic
   document.querySelectorAll("#planetList button").forEach((b, k) => b.classList.toggle("on", k === i));
   $("planetInfo").innerHTML = `<b>${p.n}</b> · ${p.au} AU from the Sun · ${p.m} Earth masses<br>${p.f}`;
   $("toLab").hidden = false;
+  if (nova.ready) say(`${p.n}. ${p.f}`);
   hooks.focus && hooks.focus(i);
 }
 $("toLab").onclick = () => {                // send this planet's real numbers to the Lab sliders (they clamp at their max)
@@ -449,14 +513,17 @@ function starState(M, age) {
   }
   return { stage, info, v };
 }
-function applyStar() {
+let lastStage = "";
+function applyStar(speak) {
   const M = +$("smass").value, a = +$("sage").value, st = starState(M, a);
   $("smassVal").textContent = M.toFixed(1) + " M☉"; $("sageVal").textContent = a + "%";
   $("starClass").textContent = st.stage; $("starInfo").textContent = st.info;
-  starTarget = mode === "stars" ? st.v : { ...SUN };      // only change the 3D star while the Stars tab is active
+  starTarget = mode === "stars" ? st.v : { ...SUN };
+  if (speak && nova.ready && st.stage !== lastStage) { clearTimeout(nova.t2); nova.t2 = setTimeout(() => say(st.stage + ". " + st.info), 600); }
+  lastStage = st.stage;      // only change the 3D star while the Stars tab is active
 }
-["smass", "sage"].forEach(id => $(id).addEventListener("input", applyStar));
-document.querySelectorAll(".spreset").forEach(b => b.onclick = () => { $("smass").value = b.dataset.m; $("sage").value = b.dataset.a; applyStar(); });
+["smass", "sage"].forEach(id => $(id).addEventListener("input", () => applyStar(true)));
+document.querySelectorAll(".spreset").forEach(b => b.onclick = () => { $("smass").value = b.dataset.m; $("sage").value = b.dataset.a; applyStar(true); });
 applyStar();
 
 /* --- Quiz --- */
@@ -495,11 +562,13 @@ function showQ() {
   }
   const q = deck[qi];
   box.innerHTML = `<p><b>Question ${qi + 1} of ${deck.length}</b> · Score ${score}</p><p>${q.q}</p>` + q.o.map((t, i) => `<button class="opt" data-i="${i}">${t}</button>`).join("") + `<p id="qfb"></p>`;
+  if (nova.ready && $("tab-quiz").classList.contains("on")) say(q.q);
   box.querySelectorAll(".opt").forEach(btn => btn.onclick = () => {
     const i = +btn.dataset.i; if (box.querySelector(".right")) return;      // already answered
     if (i === q.a) score++;
     box.querySelectorAll(".opt")[q.a].classList.add("right"); if (i !== q.a) btn.classList.add("wrong");
     $("qfb").innerHTML = (i === q.a ? "✅ Correct! " : "❌ Not quite. ") + q.e + `<button class="btn" id="nextQ">${qi + 1 < deck.length ? "Next question" : "See score"}</button>`;
+    say((i === q.a ? "Correct! " : "Not quite. ") + q.e);
     $("nextQ").onclick = () => { qi++; showQ(); };
   });
 }
@@ -540,6 +609,7 @@ function renderFaq(filter = "") {
     .map(([q, a]) => `<details><summary>${q}</summary><p>${a}</p></details>`).join("") || "<p style='color:var(--muted)'>No match. Try a shorter word.</p>";
 }
 $("faqSearch").addEventListener("input", e => renderFaq(e.target.value));
+$("faqList").addEventListener("toggle", e => { if (e.target.open) say(e.target.querySelector("summary").textContent + " " + e.target.querySelector("p").textContent); }, true);
 renderFaq();
 
 /* ---------- 3. CDN LOADING WITH FALLBACKS ---------- */
