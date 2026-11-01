@@ -88,6 +88,9 @@
   body:not(.holo) #holoBar, body:not(.holo) #holoGuideBox { display:none; }
   body.holo #nova, body.holo #hud, body.holo .walk { display:none; }
   @media (max-width:800px) { body.holo aside { display:none; } body.holo main { position:fixed; inset:0; height:100%; z-index:30; } }
+  #brainCanvas { width:100%; height:230px; display:block; border-radius:10px; background:radial-gradient(circle at 50% 40%,#10173a,#04060f); touch-action:pan-y; cursor:grab; }
+  .legend { font-size:.72rem; color:var(--muted); margin-top:6px; line-height:1.4; }
+  #xaiLog { margin:0; background:#050912; color:#9fd8ff; font:.74rem/1.5 ui-monospace,Consolas,monospace; white-space:pre-wrap; height:170px; overflow:auto; padding:8px; border-radius:8px; border:1px solid #1d2a55; }
   #nova { position:absolute; left:14px; bottom:14px; right:14px; max-width:430px; display:flex; gap:10px; align-items:flex-end; z-index:6; pointer-events:none; }
   #nova > * { pointer-events:auto; }
   #novaFace { width:54px; height:54px; flex:none; border-radius:50%; position:relative; background:radial-gradient(circle at 35% 30%,#b8fff0,#4de0c0 60%,#2aa58f); box-shadow:0 0 18px rgba(77,224,192,.55); animation:novaFloat 3s ease-in-out infinite; }
@@ -158,6 +161,10 @@
     <button data-d="0.72" data-m="0.815" data-g="100">🟠 Venus</button>
   </div>
 
+  <h2>🧠 LIVE AI INTERNAL BRAIN MAP</h2>
+  <div class="card" id="brainCard"><canvas id="brainCanvas" aria-label="3D neural network visualiser"></canvas>
+    <div class="legend">Input (3) → Hidden 1 (5) → Hidden 2 (5) → Output (3). Drag to rotate. Brighter = more active. Light pulses = data flowing forward.</div>
+    <div class="xhead" style="margin:12px 0 6px;color:#7fd0ff">🎓 XAI ACADEMY: LIVE READOUT</div><pre id="xaiLog"></pre></div>
   <h2>🧠 AI LAB READOUT</h2>
   <div class="card">
     <p id="classLabel">—</p>
@@ -224,7 +231,7 @@
 
 // Nova's state lives at the very top so every function below (including the first update() call) can safely use it.
 const nova = { on: true, ready: false, moved: false, t: 0, t2: 0, lastCls: null, voice: null };
-let isSurfaceMode = false, lastSR = null, weather = null;   // weather = the synced Earth city (or null)   // global view-mode flag + the latest {sliders, ML result} for the surface engine
+let isSurfaceMode = false, lastSR = null, weather = null, brain = null;   // weather = the synced Earth city (or null)   // global view-mode flag + the latest {sliders, ML result} for the surface engine
 
 /* ---------- 1. PHYSICS + DECISION TREE ---------- */
 const HZ_INNER = 0.8, HZ_OUTER = 1.5;       // Goldilocks zone edges in AU (also drawn as the green ring)
@@ -549,6 +556,7 @@ function update() {                           // runs on EVERY slider move and p
   nova.lastCls = r.cls;
   checkMission(s, r);
   lastSR = { s, r };
+  if (brain) brain.fire(s, r);                      // every slider move, preset, mission or weather sync sends a pulse through the network
   if (isSurfaceMode) { hooks.markSurface && hooks.markSurface(); scheduleLog(); }   // sliders also reshape the landscape
 }
 
@@ -809,6 +817,207 @@ function SimpleOrbit(cam, el, tgt) {
   addEventListener("pointermove", e => { if (!down) return; th -= (e.clientX - lx) * .01; ph = Math.min(3, Math.max(.15, ph - (e.clientY - ly) * .01)); lx = e.clientX; ly = e.clientY; });
   el.addEventListener("wheel", e => { e.preventDefault(); r = Math.min(80, Math.max(1.5, r * (1 + e.deltaY * .001))); }, { passive: false });
   this.update = () => { cam.position.set(r * Math.sin(ph) * Math.sin(th), r * Math.cos(ph), r * Math.sin(ph) * Math.cos(th)).add(tgt); cam.lookAt(tgt); };
+}
+
+/* =====================================================================
+   LIVE 3D NEURAL NETWORK VISUALIZER
+   ---------------------------------------------------------------------
+   A SECOND, tiny Three.js scene (its own canvas + renderer) draws a real neural network: 3 -> 5 -> 5 -> 3.
+   The weights below were trained in Python (train_neural_net.py). The decision TREE still makes the app's official
+   answer; this network is a companion model trained on the same climate labels so students can SEE a neural net think.
+
+   THE MATH THAT MAKES IT MOVE
+   1) Forward pass. Each layer is one matrix multiply:   a_next = sigmoid( Wᵀ · a + b ).
+        W[i][j] is the weight on the wire from neuron i to neuron j. The same numbers colour the 3D wires:
+        wire brightness = | a_i x W[i][j] |  (how much that wire contributed).
+   2) Pulses. Every light pulse sits on one wire from point A (source neuron) to point B (target neuron).
+        Its position is a linear interpolation:   P(t) = A + (B - A) * t,   t runs 0 -> 1.
+        t grows by  dt * speed / |B - A|  so every pulse travels at the same real speed, whatever the wire length.
+   3) Cascade. When a pulse reaches neuron j of the next layer, that neuron "fires": new pulses leave along ITS
+        outgoing wires. So the light really flows Input -> Hidden 1 -> Hidden 2 -> Output.
+   4) Rotation. All neurons, wires and pulses are children of ONE Group. Rotating the group multiplies every
+        child's coordinates by the same rotation matrix, so the whole brain turns as a rigid body.
+   5) Explainability (XAI). The "driver" is found by ablation: set one input to a neutral 0.5, run the forward pass
+        again, and see how far the winning probability drops. The biggest drop = the biggest driver.
+   ===================================================================== */
+// Auto-generated by train_neural_net.py: W[l][i][j] = weight from neuron i (layer l) to neuron j (layer l+1)
+const NN = { W1: [[-3.111, 4.984, 2.695, 3.859, 4.005], [1.22, 0.387, -5.436, -1.482, 1.963], [0.692, 3.18, 0.997, -1.989, -4.123]], b1: [1.819, -3.238, -1.957, -1.261, -3.243],
+  W2: [[-0.978, -3.43, 3.175, -4.289, 3.531], [-0.039, 3.171, -2.379, 3.779, -2.954], [4.165, 2.841, -3.684, 2.726, -3.275], [2.224, 2.159, -2.022, 3.619, -1.531], [2.584, 4.039, -4.39, 5.175, -4.103]], b2: [-1.119, -2.609, 3.163, -2.653, 2.789],
+  W3: [[2.37, -1.198, -2.241], [4.016, 0.033, -7.544], [-6.25, 2.008, 4.503], [3.511, 2.148, -7.6], [-6.753, 0.418, 5.607]], b3: [0.064, -0.159, 0.955] };
+const sigmoid = z => 1 / (1 + Math.exp(-z));                       // squashes any number into 0..1
+function layerForward(a, W, b, squash) {                           // one layer = matrix multiply + bias (+ sigmoid)
+  const out = new Array(b.length);
+  for (let j = 0; j < b.length; j++) { let z = b[j]; for (let i = 0; i < a.length; i++) z += a[i] * W[i][j]; out[j] = squash ? sigmoid(z) : z; }
+  return out;
+}
+function nnForward(x) {
+  const h1 = layerForward(x, NN.W1, NN.b1, true), h2 = layerForward(h1, NN.W2, NN.b2, true), z = layerForward(h2, NN.W3, NN.b3, false);
+  const mx = Math.max(...z), e = z.map(v => Math.exp(v - mx)), sum = e[0] + e[1] + e[2];   // softmax: raw scores -> probabilities that add to 1
+  return { x, h1, h2, out: e.map(v => v / sum) };
+}
+// Same scaling used in training: log scale for distance and mass, then everything squeezed to 0..1
+const nnInputs = s => [(Math.log(s.distance) - Math.log(.1)) / (Math.log(5) - Math.log(.1)), (Math.log(s.mass) - Math.log(.1)) / (Math.log(10) - Math.log(.1)), s.ghg / 100];
+const LESSONS = [
+  "💡 A neuron multiplies each input by a learned weight, adds a bias, then squashes the total with a sigmoid into a number between 0 and 1.",
+  "💡 Thick, bright wires = a big weight times a big activation. That connection mattered a lot for this answer.",
+  "💡 Hidden layers build new features. Layer 1 mixes the raw inputs, layer 2 mixes those mixtures. Stacking layers is what 'deep' means.",
+  "💡 The output layer uses softmax, so the three scores add up to 100%. The network has to pick a winner.",
+  "💡 Training means showing thousands of example planets and nudging every weight to reduce mistakes (backpropagation).",
+  "💡 A decision tree asks yes/no questions one at a time. A neural network blends all inputs at once, so its borders are smooth curves.",
+  "💡 'Main driver' is found by ablation: set one input to a neutral value and see how much the answer changes."
+];
+
+function initBrain() {
+  const canvas = $("brainCanvas"), tabLab = $("tab-lab");
+  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
+  renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+  const scene = new THREE.Scene(), camera = new THREE.PerspectiveCamera(45, 2, .1, 100);
+  camera.position.set(0, 1.3, 10.5); camera.lookAt(0, 0, 0);
+  const group = new THREE.Group(); scene.add(group);               // ONE parent: rotating it rotates the whole brain
+
+  const SIZES = [3, 5, 5, 3], XS = [-3.6, -1.2, 1.2, 3.6];         // neurons per layer, and each layer's x position
+  const NAMES = ["Distance", "Mass", "Greenhouse"], OUTN = ["Ice World", "Habitable", "Lava Wasteland"];
+  const WIN = [[.35, .85, 1], [.25, 1, .5], [1, .4, .1]];          // output colours: ice blue, habitable green, lava orange
+  const INC = [[.3, .7, 1], [.75, .5, 1], [.95, .65, .2]], DANGER = [1, .12, .04];   // input colours; DANGER = neon red-orange
+
+  const gcv = document.createElement("canvas"); gcv.width = gcv.height = 64;      // soft round glow used for halos and pulses
+  const gx = gcv.getContext("2d"), gr = gx.createRadialGradient(32, 32, 0, 32, 32, 32);
+  gr.addColorStop(0, "rgba(255,255,255,1)"); gr.addColorStop(.4, "rgba(255,255,255,.35)"); gr.addColorStop(1, "rgba(255,255,255,0)");
+  gx.fillStyle = gr; gx.fillRect(0, 0, 64, 64); const glowTex = new THREE.CanvasTexture(gcv);
+
+  // NEURONS: each layer's neurons sit on a small ring in the y-z plane, so the layer is a 3D shape, not a flat column
+  const pos = SIZES.map((n, l) => Array.from({ length: n }, (_, i) => {
+    const a = i / n * Math.PI * 2 + l * .6, r = n === 3 ? 1.05 : 1.5; return new THREE.Vector3(XS[l], Math.sin(a) * r, Math.cos(a) * r * .9);
+  }));
+  const sphere = new THREE.SphereGeometry(.2, 16, 12);
+  const nodes = pos.map(layer => layer.map(p => {
+    const mat = new THREE.MeshBasicMaterial({ color: 0x223355 }), mesh = new THREE.Mesh(sphere, mat); mesh.position.copy(p);
+    const halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex, blending: THREE.AdditiveBlending, depthWrite: false, transparent: true, opacity: 0 }));
+    halo.scale.setScalar(1.6); mesh.add(halo); group.add(mesh);
+    return { mesh, mat, halo, act: 0, tgt: 0, flash: 0, col: [.3, .4, .6] };       // act = shown brightness, tgt = where it is heading
+  }));
+  function label(text, p, dir) {                                    // text sprites that always face the camera
+    const cv = document.createElement("canvas"); cv.width = 256; cv.height = 64; const c = cv.getContext("2d");
+    c.font = "bold 30px system-ui,sans-serif"; c.fillStyle = "#cfe3ff"; c.textAlign = dir < 0 ? "right" : "left"; c.fillText(text, dir < 0 ? 250 : 6, 42);
+    const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(cv), transparent: true, depthWrite: false }));
+    sp.scale.set(2.4, .6, 1); sp.position.set(p.x + dir * 1.4, p.y, p.z); group.add(sp);
+  }
+  NAMES.forEach((t, i) => label(t, pos[0][i], -1)); OUTN.forEach((t, k) => label(t, pos[3][k], 1));
+
+  // SYNAPSES: one line segment per connection (55 total) in ONE LineSegments object = one draw call
+  const Wm = [NN.W1, NN.W2, NN.W3], conns = [], outgoing = SIZES.map(n => Array.from({ length: n }, () => []));
+  for (let l = 0; l < 3; l++) for (let i = 0; i < SIZES[l]; i++) for (let j = 0; j < SIZES[l + 1]; j++) {
+    const a = pos[l][i], b = pos[l + 1][j]; outgoing[l][i].push(conns.length);
+    conns.push({ l, i, j, a, b, len: a.distanceTo(b), w: Wm[l][i][j], flow: 0, tflow: 0, tint: [.3, .4, .6] });
+  }
+  const lp = new Float32Array(conns.length * 6), lc = new Float32Array(conns.length * 6);
+  conns.forEach((c, k) => lp.set([c.a.x, c.a.y, c.a.z, c.b.x, c.b.y, c.b.z], k * 6));
+  const lineGeo = new THREE.BufferGeometry();
+  lineGeo.setAttribute("position", new THREE.BufferAttribute(lp, 3)); lineGeo.setAttribute("color", new THREE.BufferAttribute(lc, 3));
+  group.add(new THREE.LineSegments(lineGeo, new THREE.LineBasicMaterial({ vertexColors: true, transparent: true, opacity: .95 })));
+
+  // PULSES: a fixed pool of 150 light dots, re-used forever (typed arrays, nothing allocated per frame = no memory growth)
+  const NP = 150, pp = new Float32Array(NP * 3), pc = new Float32Array(NP * 3), pRGB = new Float32Array(NP * 3);
+  const pConn = new Int16Array(NP).fill(-1), pT = new Float32Array(NP);              // which wire each pulse is on, and its t (0..1)
+  const pg = new THREE.BufferGeometry(); pg.setAttribute("position", new THREE.BufferAttribute(pp, 3)); pg.setAttribute("color", new THREE.BufferAttribute(pc, 3));
+  const pts = new THREE.Points(pg, new THREE.PointsMaterial({ size: 10, sizeAttenuation: false, vertexColors: true, map: glowTex, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }));
+  pts.frustumCulled = false; group.add(pts);
+  const nodeWave = SIZES.map(n => new Int32Array(n).fill(-1)); let wave = 0;        // makes each neuron fire only once per wave
+  function spawn(ci, rgb) { for (let k = 0; k < NP; k++) if (pConn[k] < 0) { pConn[k] = ci; pT[k] = 0; pRGB[k * 3] = rgb[0]; pRGB[k * 3 + 1] = rgb[1]; pRGB[k * 3 + 2] = rgb[2]; return; } }
+
+  let fw = null, last = null, driver = 0, danger = false, winner = 1, lastPulse = 0, pending = false, lastLog = 0, lessonI = 0, time = 0, sizeW = 0;
+  const xai = [];
+  function add(lines) {                                             // rolling terminal
+    xai.push(...lines); if (xai.length > 60) xai.splice(0, xai.length - 60);
+    const el = $("xaiLog"); el.textContent = xai.join("\n"); el.scrollTop = el.scrollHeight;
+  }
+  add(["🎓 Welcome to the XAI Academy! Move a slider and watch signals race through the network.", ""]);
+
+  function explain() {                                              // turns the real numbers into plain-English lines
+    const { s, r, delta } = last, x = fw.x, pct = Math.round(fw.out[winner] * 100);
+    const units = [`${s.distance.toFixed(2)} AU`, `${s.mass.toFixed(2)} M⊕`, `${s.ghg}%`], top = a => a.indexOf(Math.max(...a));
+    const j1 = top(fw.h1), j2 = top(fw.h2); let bi = 0, bw = 0;
+    for (let i = 0; i < 3; i++) { const v = x[i] * NN.W1[i][j1]; if (Math.abs(v) > Math.abs(bw)) { bw = v; bi = i; } }   // which input pushed neuron H1 hardest
+    const tc = ["ice", "hab", "lava"].indexOf(r.cls);
+    const agree = tc < 0 ? `ℹ ${r.label} comes from a physics rule (mass), outside this 3-class network.`
+      : tc === winner ? "✔ The neural network and the decision tree agree."
+      : `⚠ Network says ${OUTN[winner]}; decision tree says ${r.label}. Two models can disagree near a border.`;
+    add([`▶ Input '${NAMES[driver]}' (${units[driver]}) activated at ${x[driver].toFixed(2)}`,
+      `  → Hidden layer 1: neuron H1-${j1 + 1} fired at ${fw.h1[j1].toFixed(2)} (strongest push: '${NAMES[bi]}', weighted ${bw.toFixed(1)})`,
+      `  → Hidden layer 2: neuron H2-${j2 + 1} fired at ${fw.h2[j2].toFixed(2)}`,
+      `  → Output '${OUTN[winner]}' = ${pct}%: ${pct >= 50 ? "firing threshold reached" : "below 50% but still the highest score"}`,
+      `  ★ Main driver: ${NAMES[driver]}. Neutralising it lowers confidence by ${Math.round(Math.abs(delta[driver]) * 100)} points.`,
+      agree, LESSONS[lessonI++ % LESSONS.length], ""]);
+  }
+  function emit() {                                                 // launch pulses from every input neuron
+    lastPulse = performance.now(); pending = false; wave++;
+    nodes[0].forEach((n, i) => outgoing[0][i].forEach(ci => { if (Math.random() < .4 + .6 * n.tgt) spawn(ci, conns[ci].tint); }));
+    if (lastPulse - lastLog > 700) { lastLog = lastPulse; explain(); }
+  }
+
+  function fire(s, r) {                                             // called on every slider / preset / weather change
+    const x = nnInputs(s); fw = nnForward(x); winner = fw.out.indexOf(Math.max(...fw.out));
+    const delta = [0, 1, 2].map(i => { const x2 = x.slice(); x2[i] = .5; return fw.out[winner] - nnForward(x2).out[winner]; });   // ablation
+    driver = delta.reduce((b, d, i) => Math.abs(d) > Math.abs(delta[b]) ? i : b, 0);
+    danger = driver === 2 && (winner === 2 || s.ghg >= 60);       // greenhouse is steering the decision toward heat
+    const wc = WIN[winner]; last = { s, r, delta };
+    nodes[0].forEach((n, i) => { n.tgt = x[i]; n.col = (i === 2 && danger) ? DANGER : INC[i]; });       // the greenhouse node turns neon red when dangerous
+    nodes[1].forEach((n, j) => { n.tgt = fw.h1[j]; n.col = wc; });                                       // hidden neurons take the winner's colour (green when habitable)
+    nodes[2].forEach((n, j) => { n.tgt = fw.h2[j]; n.col = wc; });
+    nodes[3].forEach((n, k) => { n.tgt = fw.out[k]; n.col = WIN[k]; });
+    const acts = [x, fw.h1, fw.h2];
+    for (let l = 0; l < 3; l++) {                                  // wire brightness = |activation x weight|, normalised per layer
+      let mx = 1e-6; for (const c of conns) if (c.l === l) { c.tflow = Math.abs(acts[l][c.i] * c.w); mx = Math.max(mx, c.tflow); }
+      for (const c of conns) if (c.l === l) c.tflow /= mx;
+    }
+    for (const c of conns) c.tint = c.l === 0 ? ((c.i === 2 && danger) ? DANGER : INC[c.i]) : wc;
+    if (performance.now() - lastPulse > 160) emit(); else pending = true;   // limit how often new pulse waves start
+  }
+
+  let drag = null;
+  canvas.addEventListener("pointerdown", e => drag = e.clientX);
+  addEventListener("pointerup", () => drag = null);
+  addEventListener("pointermove", e => { if (drag === null) return; group.rotation.y += (e.clientX - drag) * .01; drag = e.clientX; });
+
+  function frame(dt) {                                              // runs inside the main requestAnimationFrame loop
+    if (!(tabLab.classList.contains("on") && !document.body.classList.contains("holo") && canvas.offsetParent)) return;   // skip drawing when hidden
+    dt = Math.min(dt, .05); time += dt;
+    const w = canvas.clientWidth; if (w && w !== sizeW) { sizeW = w; renderer.setSize(w, 230, false); camera.aspect = w / 230; camera.updateProjectionMatrix(); }
+    if (pending && performance.now() - lastPulse > 160) emit();
+    group.rotation.y += dt * .18; group.rotation.x = Math.sin(time * .3) * .12;     // slow turn (the drag handler adds to it)
+
+    for (const layer of nodes) for (const n of layer) {             // ease each neuron toward its target brightness
+      n.act += (n.tgt - n.act) * Math.min(1, dt * 6); n.flash = Math.max(0, n.flash - dt * 1.8);
+      const lit = Math.min(1.4, .22 + .78 * n.act + .7 * n.flash) * (n.col === DANGER ? 1 + .3 * Math.sin(time * 9) : 1);   // red neuron throbs
+      n.mat.color.setRGB(Math.min(1, n.col[0] * lit), Math.min(1, n.col[1] * lit), Math.min(1, n.col[2] * lit));
+      n.mesh.scale.setScalar(.75 + .5 * n.act + .5 * n.flash);
+      n.halo.material.color.setRGB(n.col[0], n.col[1], n.col[2]); n.halo.material.opacity = Math.min(1, .1 + .8 * (n.act * .6 + n.flash));
+    }
+    for (let k = 0; k < conns.length; k++) {                        // write each wire's colour into the vertex-colour buffer
+      const c = conns[k]; c.flow += (c.tflow - c.flow) * Math.min(1, dt * 5);
+      const f = (.12 + .88 * c.flow) * ((danger && c.l === 0 && c.i === 2) ? 1 + .35 * Math.sin(time * 9) : 1);
+      lc[k * 6] = lc[k * 6 + 3] = c.tint[0] * f; lc[k * 6 + 1] = lc[k * 6 + 4] = c.tint[1] * f; lc[k * 6 + 2] = lc[k * 6 + 5] = c.tint[2] * f;
+    }
+    lineGeo.attributes.color.needsUpdate = true;
+
+    for (let k = 0; k < NP; k++) {                                  // advance every live pulse along its wire
+      if (pConn[k] < 0) continue;
+      const c = conns[pConn[k]]; pT[k] += dt * 7 / c.len;           // constant speed (7 units/s): t grows by speed/length
+      if (pT[k] >= 1) {                                             // arrived at the next neuron
+        const l = c.l + 1, j = c.j; pConn[k] = -1; pc[k * 3] = pc[k * 3 + 1] = pc[k * 3 + 2] = 0;
+        if (l < 3) { if (nodeWave[l][j] !== wave) { nodeWave[l][j] = wave; for (const ci of outgoing[l][j]) if (Math.random() < .3 + .7 * nodes[l][j].tgt) spawn(ci, conns[ci].tint); } }   // neuron fires onward
+        else nodes[3][j].flash = j === winner ? 1 : .5 * fw.out[j];                                      // output neuron flashes
+        continue;
+      }
+      const t = pT[k], env = .25 + .75 * Math.sin(Math.PI * t);     // fade in and out along the wire
+      pp[k * 3] = c.a.x + (c.b.x - c.a.x) * t; pp[k * 3 + 1] = c.a.y + (c.b.y - c.a.y) * t; pp[k * 3 + 2] = c.a.z + (c.b.z - c.a.z) * t;   // P(t) = A + (B - A) t
+      pc[k * 3] = pRGB[k * 3] * env; pc[k * 3 + 1] = pRGB[k * 3 + 1] * env; pc[k * 3 + 2] = pRGB[k * 3 + 2] * env;
+    }
+    pg.attributes.position.needsUpdate = true; pg.attributes.color.needsUpdate = true;
+    renderer.render(scene, camera);
+  }
+  const stats = () => ({ alive: pConn.reduce((n, c) => n + (c >= 0 ? 1 : 0), 0), winner, driver, danger, out: fw && fw.out.map(v => +v.toFixed(2)) });
+  return { fire, frame, stats };
 }
 
 /* ---------- 4. THE 3D SCENE ---------- */
@@ -1340,11 +1549,13 @@ function init3D() {
     const ft = flight.phase !== "orbit" ? null : mode === "lab" && $("follow").checked ? planet : mode === "solar" && selected !== null ? sol[selected].mesh : null;
     if (ft) { delta.copy(ft.position).sub(controls.target); camera.position.add(delta); controls.target.copy(ft.position); }
     if (flight.phase === "orbit") controls.update();   // OrbitControls only drives the camera in orbit view
-    flightFrame(clock.getDelta());                        // landing / surface / take-off animation
+    const dt0 = clock.getDelta(); flightFrame(dt0); if (brain) brain.frame(dt0);   // 2nd scene: the neural network                        // landing / surface / take-off animation
     if (holo.on) { planet.position.set(0, 0, 0); renderHolo(); } else renderer.render(scene, camera);   // hologram mode draws 4 views instead of 1
   }
   sceneReady = true;
   hooks.setMode(mode);
+  try { brain = initBrain(); if (lastSR) brain.fire(lastSR.s, lastSR.r); }
+  catch (e) { console.warn(e); $("xaiLog").textContent = "The brain map needs WebGL, which this browser did not provide."; }
   animate();
 }
 </script>
