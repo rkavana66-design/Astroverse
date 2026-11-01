@@ -62,6 +62,20 @@
   .feat { display:grid; grid-template-columns:repeat(3,1fr); gap:10px; margin:22px 0 4px; font-size:.85rem; }
   .feat div { background:rgba(255,255,255,.07); border:1px solid rgba(255,255,255,.12); border-radius:12px; padding:12px; }
   .start { margin-top:18px; padding:14px 34px; font-size:1.05rem; font-weight:700; border:0; border-radius:999px; background:linear-gradient(90deg,#4de0c0,#7aa2ff); color:#06101a; cursor:pointer; }
+  .land { width:100%; padding:14px; margin-bottom:14px; font-size:.95rem; font-weight:800; letter-spacing:.04em; border:0; border-radius:12px; cursor:pointer; color:#06101a; background:linear-gradient(90deg,#ff9a3c,#ff4d8d,#7aa2ff); box-shadow:0 0 18px rgba(255,120,120,.55); animation:landGlow 2s ease-in-out infinite; }
+  .land:disabled { opacity:.65; animation:none; cursor:wait; }
+  body.surface .land { background:linear-gradient(90deg,#4de0c0,#7aa2ff); box-shadow:0 0 18px rgba(77,224,192,.55); animation:none; }
+  @keyframes landGlow { 50% { box-shadow:0 0 32px rgba(255,120,120,.95); } }
+  .xeno { background:#02100a; border-color:#14532d; margin-bottom:16px; }
+  .xhead { color:#4cff8a; font:700 .78rem ui-monospace,Consolas,monospace; letter-spacing:.08em; margin-bottom:8px; }
+  #xenoText { margin:0; color:#8dffb5; font:.78rem/1.55 ui-monospace,Consolas,monospace; white-space:pre-wrap; max-height:46vh; overflow:auto; }
+  #xenoText::after { content:"█"; animation:cur 1s steps(1) infinite; } @keyframes cur { 50% { opacity:0; } }
+  #flash { position:absolute; inset:0; background:#fff; opacity:0; pointer-events:none; transition:opacity .4s; z-index:20; }
+  #hud { position:absolute; top:12px; left:12px; z-index:6; background:rgba(15,20,36,.82); color:#e8ebf5; border:1px solid rgba(255,255,255,.14); border-radius:10px; padding:8px 12px; font-size:.78rem; line-height:1.5; }
+  .walk { position:absolute; right:14px; z-index:6; border:1px solid rgba(255,255,255,.25); background:rgba(15,20,36,.85); color:#fff; border-radius:999px; padding:12px 18px; font-size:.9rem; cursor:pointer; touch-action:none; user-select:none; }
+  #walkBtn { bottom:70px; } #jumpBtn { bottom:14px; }
+  body:not(.surface) #hud, body:not(.surface) .walk { display:none; }
+  body.surface #nova { right:120px; }
   #nova { position:absolute; left:14px; bottom:14px; right:14px; max-width:430px; display:flex; gap:10px; align-items:flex-end; z-index:6; pointer-events:none; }
   #nova > * { pointer-events:auto; }
   #novaFace { width:54px; height:54px; flex:none; border-radius:50%; position:relative; background:radial-gradient(circle at 35% 30%,#b8fff0,#4de0c0 60%,#2aa58f); box-shadow:0 0 18px rgba(77,224,192,.55); animation:novaFloat 3s ease-in-out infinite; }
@@ -101,6 +115,8 @@
     <button class="on" data-tab="lab">🧪 Lab</button><button data-tab="solar">🪐 Planets</button><button data-tab="stars">⭐ Stars</button><button data-tab="quiz">🎯 Quiz</button><button data-tab="help">❓ Help</button>
   </div>
   <div class="tab on" id="tab-lab">
+    <button class="land" id="landBtn">🚀 LAND ON PLANET SURFACE</button>
+    <div class="card xeno" id="xenoCard" hidden><div class="xhead">📝 AI XENOBIOLOGIST ENCRYPTED LOG</div><pre id="xenoText"></pre></div>
     <div class="card" id="missionCard" style="margin-bottom:16px">
       <div class="row" style="margin:0"><b>🚀 Mission</b><select id="missionSel" aria-label="Choose a mission"></select></div>
       <p id="missionGoal"></p>
@@ -164,6 +180,8 @@
   <div id="status"></div>
 </aside>
 <main><div id="scene"></div>
+  <div id="flash"></div><div id="hud"></div>
+  <button class="walk" id="walkBtn">⬆ Walk</button><button class="walk" id="jumpBtn">⤒ Jump</button>
   <div id="nova" aria-live="polite">
     <div id="novaFace"><i></i></div>
     <div class="nbox"><div id="novaBubble">Hi! I'm Nova, your space guide. Press Start and I'll explain everything out loud.</div>
@@ -185,6 +203,7 @@
 
 // Nova's state lives at the very top so every function below (including the first update() call) can safely use it.
 const nova = { on: true, ready: false, moved: false, t: 0, t2: 0, lastCls: null, voice: null };
+let isSurfaceMode = false, lastSR = null;   // global view-mode flag + the latest {sliders, ML result} for the surface engine
 
 /* ---------- 1. PHYSICS + DECISION TREE ---------- */
 const HZ_INNER = 0.8, HZ_OUTER = 1.5;       // Goldilocks zone edges in AU (also drawn as the green ring)
@@ -362,6 +381,65 @@ $("missionSel").onchange = () => { curMission = +$("missionSel").value; $("hintT
 $("hintBtn").onclick = () => { $("hintText").textContent = "💡 " + MISSIONS[curMission].hint; };
 refreshMissionMenu();
 
+/* ---------- AI XENOBIOLOGIST: local text synthesis engine ----------
+   No server needed. The journal is assembled from templates, but every number and every choice of wording
+   comes from the sliders and the ML result, so each planet gets its own log. */
+function xenoLog(s, r) {
+  const m = s.mass, d = s.distance, g = s.ghg, T = Math.round(r.temp), cls = r.cls;
+  const grav = Math.pow(m, .46);                    // surface gravity in Earth g (g = M / R^2, with radius ~ M^0.27)
+  const flux = 1 / (d * d);                         // starlight compared with Earth
+  const seed = Math.round(m * 100 + d * 1000 + g * 7);
+  const pick = (a, k = 0) => a[(seed + k * 7) % a.length];   // deterministic: the same sliders always give the same wording
+  const kg = Math.round(80 * grav);
+
+  // 1) Gravitational strain on the crew (from the Mass slider)
+  const gravity = grav < .5 ? `Gravity ${grav.toFixed(2)} g. Each step launches me ${(1.2 / grav).toFixed(1)} m into the air. My 80 kg now reads ${kg} kg and the crew drift between footfalls like seeds on a breeze.`
+    : grav < .9 ? `Gravity ${grav.toFixed(2)} g. Light and springy. My 80 kg reads ${kg} kg, so the climb up the ridge cost almost nothing.`
+    : grav < 1.15 ? `Gravity ${grav.toFixed(2)} g, practically home weight. Joints quiet, stride familiar, no exo-braces needed.`
+    : grav < 1.8 ? `Gravity ${grav.toFixed(2)} g. My 80 kg presses down like ${kg} kg. Calves burn, breath comes hard, and the suit servos whine on every slope.`
+    : `Gravity ${grav.toFixed(2)} g, crushing. I weigh ${kg} kg. Blood pools in my legs, the crew shuffles in slow careful steps, and the med-bot orders a rest every ten minutes.`;
+
+  // 2) Sky (from the Greenhouse slider and the class)
+  const sky = cls === "rock" ? "Black sky at noon. With no air to scatter light, stars burn beside a hard white sun."
+    : g > 60 ? `A translucent emerald haze fills the sky. Methane and trapped heat (greenhouse ${g}%) tint the daylight an eerie green, and the horizon glows like deep seawater.`
+    : g > 30 ? `The sky is a pale green-grey haze. The greenhouse layer (${g}%) holds the heat close to the ground.`
+    : cls === "lava" ? "The sky is rust-red with heat shimmer. The air itself ripples above the trenches."
+    : cls === "ice" ? "A thin, brittle, pale blue-white sky. Ice crystals hang in the air like glitter."
+    : "A clear Earth-like cyan sky with slow, bright clouds.";
+
+  // 3) Native flora or crystalline formations (class + starlight)
+  const flora = cls === "hab" ? (flux < .7 ? "Broad, near-black leaves tilt toward our dim star, hoarding every photon."
+        : flux > 1.3 ? "Violet, waxy canopies shield themselves from the harsh light and fold shut at midday."
+        : pick(["Emerald fern-trees unfurl as I pass, and fist-sized spore lanterns pulse slowly in the shade.", "Spiral grasses sway with no wind, tracking the star like a field of green compass needles."]))
+    : cls === "ice" ? pick(["Crystalline spires hum when the wind crosses them, refracting light into slow neon pulses.", "Glass-clear blades grow while I watch, supercooled water snapping into new facets."])
+    : cls === "lava" ? pick(["Ember-moss clings to the trench walls and glows in time with the magma's pulse.", "Obsidian stalks lean over the rivers, drinking heat. Their tips flicker like candle flames."])
+    : "No visible life. In the shadow of a crater lip I log a faint patchy film: possible microbes living inside the rock, shielded from radiation.";
+
+  // 4) Chemical composition of the liquid (from temperature and greenhouse)
+  const lakes = cls === "rock" ? "No liquid anywhere. Only a dusting of frost in the permanently shadowed craters."
+    : cls === "lava" ? `The rivers are molten basaltic silicate at about ${900 + T} K.${g > 60 ? " Sulfur fumes drift off them in yellow ribbons." : " The surface skins over, cracks, and glows again."}`
+    : T < 200 ? `The lakes are liquid methane and ethane at ${T} K: black, oily, with waxy hydrocarbon shorelines.`
+    : T < 250 ? `The lakes are an ammonia-water brine that stays liquid at ${T} K, thick as syrup.`
+    : `The lakes are liquid water at ${T} K (${T - 273} °C), pH ${(8 - g / 100 * 6.5).toFixed(1)}${g > 50 ? ", faintly acidic from dissolved carbon dioxide" : ", mildly alkaline with dissolved salts"}.`;
+
+  // 5) Structural density of the soil
+  const dens = ({ hab: 1.2, ice: .95, lava: 2.9, rock: 1.6 }[cls] || 1.2) * (1 + .12 * Math.log(m)), dn = dens.toFixed(2);
+  const soil = cls === "hab" ? `Dark, springy loam, bulk density ${dn} g/cm³, laced with white fungal threads.`
+    : cls === "ice" ? `Permafrost glass, bulk density ${dn} g/cm³. My drill rings against it like a bell.`
+    : cls === "lava" ? `Cinder and basalt grit, bulk density ${dn} g/cm³, warm even through my boots.`
+    : `Powder-fine regolith, bulk density ${dn} g/cm³. My boot prints are crisp and will outlast us.`;
+
+  return `>> DECRYPTING LOG #${100 + seed % 900} ... OK\n>> SURFACE ${T} K | ${d.toFixed(2)} AU | ${m.toFixed(2)} M⊕ | GREENHOUSE ${g}%\n\n[01] GRAVITY\n${gravity}\n\n[02] SKY\n${sky}\n\n[03] FLORA / FORMATIONS\n${flora}\n\n[04] LIQUIDS\n${lakes}\n\n[05] SOIL\n${soil}\n\n>> END OF LOG // SIGNAL FADING`;
+}
+let typeTimer = 0, logTimer = 0;
+function typeLog(text) {                        // typewriter effect: reveal 8 characters every frame-ish
+  clearInterval(typeTimer); const el = $("xenoText"); let i = 0; el.textContent = "";
+  typeTimer = setInterval(() => { i += 8; el.textContent = text.slice(0, i); el.scrollTop = el.scrollHeight; if (i >= text.length) clearInterval(typeTimer); }, 16);
+}
+function scheduleLog() {                        // wait until the slider stops moving before rewriting the log
+  clearTimeout(logTimer); logTimer = setTimeout(() => lastSR && typeLog(xenoLog(lastSR.s, lastSR.r)), 400);
+}
+
 /* ---------- NOVA BUTTONS ---------- */
 $("novaMute").onclick = () => {
   nova.on = !nova.on; $("novaMute").textContent = nova.on ? "🔊" : "🔇";
@@ -369,7 +447,7 @@ $("novaMute").onclick = () => {
 };
 $("novaSay").onclick = () => {                  // "Explain this" re-reads whatever the student is looking at
   const tab = document.querySelector(".tab.on").id.replace("tab-", "");
-  say({ lab: `${$("classLabel").textContent}. ${$("insight").textContent}`, solar: $("planetInfo").textContent,
+  say({ lab: isSurfaceMode ? $("xenoText").textContent.replace(/[>|\[\]_#]/g, " ") : `${$("classLabel").textContent}. ${$("insight").textContent}`, solar: $("planetInfo").textContent,
         stars: `${$("starClass").textContent}. ${$("starInfo").textContent}`, quiz: NOVA_TABS.quiz, help: NOVA_TABS.help }[tab], true);
 };
 
@@ -393,6 +471,8 @@ function update() {                           // runs on EVERY slider move and p
   }
   nova.lastCls = r.cls;
   checkMission(s, r);
+  lastSR = { s, r };
+  if (isSurfaceMode) { hooks.markSurface && hooks.markSurface(); scheduleLog(); }   // sliders also reshape the landscape
 }
 
 ["distance", "mass", "ghg"].forEach(id => {
@@ -439,6 +519,7 @@ const hooks = {};                           // filled by init3D(): lets this UI 
 document.querySelectorAll(".tabs button").forEach(b => b.addEventListener("click", () => {
   document.querySelectorAll(".tabs button, .tab").forEach(e => e.classList.remove("on"));
   b.classList.add("on"); $("tab-" + b.dataset.tab).classList.add("on");
+  if (isSurfaceMode && b.dataset.tab !== "lab") hooks.exitSurface && hooks.exitSurface();   // leave the surface if the student switches tabs
   if (nova.ready) say(NOVA_TABS[b.dataset.tab]);
   if (["lab", "solar", "stars"].includes(b.dataset.tab)) { mode = b.dataset.tab; hooks.setMode && hooks.setMode(mode); applyStar(); }
 }));
@@ -817,6 +898,215 @@ function init3D() {
     if (hit) selectPlanet(sol.findIndex(p => p.mesh === hit.object));
   });
 
+  /* =====================================================================
+     SPACE-TO-SURFACE EXPLORER
+     Flow: LAND button -> isSurfaceMode = true -> camera plunges through the clouds (flight.phase "plunge")
+           -> white flash -> enterSurface() hides space, buildSurface() makes the landscape -> first-person walk.
+     ===================================================================== */
+  const flight = { phase: "orbit", t: 0, d0: 1, dir: new THREE.Vector3() }, clock = new THREE.Clock();
+  const ease = t => t < .5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;      // smooth start and stop
+  const lerp = THREE.MathUtils.lerp, clamp = THREE.MathUtils.clamp;
+  const starPts = scene.children.find(o => o.geometry === sg), starLightObj = scene.children.find(o => o.isPointLight);
+  starPts.material.fog = false;
+
+  // Cloud shell around the planet: the layer the camera dives through
+  const cloudTex = canvasTex(256, 128, (g, w, h) => { for (let i = 0; i < 320; i++) { g.fillStyle = `rgba(255,255,255,${.05 + Math.random() * .2})`; g.beginPath(); g.arc(Math.random() * w, Math.random() * h, 3 + Math.random() * 14, 0, 6.3); g.fill(); } });
+  const clouds = new THREE.Mesh(new THREE.SphereGeometry(1.045, 48, 48), new THREE.MeshLambertMaterial({ map: cloudTex, transparent: true, depthWrite: false, opacity: .6 }));
+  planet.add(clouds);
+
+  // The ground: ONE plane of 129 x 129 vertices. Heights are rewritten when sliders move; geometry is never re-created.
+  const SEG = 128, SIZE = 200, STEP = SIZE / SEG, NV = (SEG + 1) * (SEG + 1);
+  const surface = new THREE.Group(); surface.visible = false; scene.add(surface);
+  const tGeo = new THREE.PlaneGeometry(SIZE, SIZE, SEG, SEG); tGeo.rotateX(-Math.PI / 2);
+  tGeo.setAttribute("color", new THREE.BufferAttribute(new Float32Array(NV * 3), 3));
+  const tMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: .95 });
+  surface.add(new THREE.Mesh(tGeo, tMat));
+  const flat = new THREE.PlaneGeometry(SIZE * 2, SIZE * 2).rotateX(-Math.PI / 2);
+  const waterMat = new THREE.MeshStandardMaterial({ color: 0x1f6fe0, transparent: true, opacity: .8, roughness: .2 }), water = new THREE.Mesh(flat, waterMat);
+  const lavaMat = new THREE.MeshBasicMaterial({ color: 0xff5a10 }), lava = new THREE.Mesh(flat, lavaMat);   // unlit material = it glows
+  surface.add(water, lava);
+  const hemi = new THREE.HemisphereLight(0xffffff, 0x333333, .9), sun = new THREE.DirectionalLight(0xfff1d6, 1.5);
+  const sunDir = new THREE.Vector3(.6, .5, .4).normalize();
+  const sunSprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex, blending: THREE.AdditiveBlending, depthWrite: false, fog: false, color: 0xffe2b0 }));
+  surface.add(hemi, sun, sunSprite);
+  const FL = 220, flora = new THREE.InstancedMesh(new THREE.ConeGeometry(.5, 1, 5), new THREE.MeshStandardMaterial({ roughness: .7 }), FL);
+  surface.add(flora);
+
+  // PRE-COMPUTED noise (done once, so slider moves stay fast): a smooth hill map, a detail map, a river line map, and crater bowls.
+  const nA = new Float32Array(NV), nB = new Float32Array(NV), nR = new Float32Array(NV), nC = new Float32Array(NV);
+  const pits = Array.from({ length: 26 }, () => ({ x: (Math.random() - .5) * SIZE, z: (Math.random() - .5) * SIZE, r: 6 + Math.random() * 16 }));
+  const fbm = (x, z) => { let a = 0, amp = 1, f = .022; for (let o = 0; o < 4; o++) { a += amp * (Math.sin(x * f + o * 1.7) * Math.cos(z * f * 1.3 - o * 2.1) + .5 * Math.sin((x + z) * f * .7 + o)); amp *= .5; f *= 2.1; } return a / 2.2; };
+  for (let iz = 0; iz <= SEG; iz++) for (let ix = 0; ix <= SEG; ix++) {          // nested loop over the vertex grid
+    const i = iz * (SEG + 1) + ix, x = -SIZE / 2 + ix * STEP, z = -SIZE / 2 + iz * STEP;
+    nA[i] = fbm(x, z);                                    // big rolling shapes (octaves of sin * cos)
+    nB[i] = fbm(x * 2.3 + 40, z * 2.3 - 17);              // finer detail
+    nR[i] = .9 * Math.sin(x * .03 + 2.2 * Math.sin(z * .018)) + .1 * Math.sin(z * .1);   // wiggly lines where it crosses 0 = river beds
+    let c = 0; for (const k of pits) { const q = Math.hypot(x - k.x, z - k.z) / k.r; if (q < 1) c -= 1 - q * q; else if (q < 1.25) c += .35 * (1.25 - q) / .25; }
+    nC[i] = c;                                            // bowl inside + raised rim
+  }
+  const fx = [], fz = [], fr = []; for (let k = 0; k < FL; k++) { fx.push((Math.random() - .5) * 180); fz.push((Math.random() - .5) * 180); fr.push(Math.random()); }
+
+  function groundY(x, z) {                                // read the terrain height at any x,z (bilinear between 4 vertices)
+    const gx = clamp((x + SIZE / 2) / STEP, 0, SEG - .001), gz = clamp((z + SIZE / 2) / STEP, 0, SEG - .001), ix = gx | 0, iz = gz | 0, u = gx - ix, v = gz - iz;
+    const P = tGeo.attributes.position.array, at = (a, b) => P[((iz + b) * (SEG + 1) + ix + a) * 3 + 1];
+    return lerp(lerp(at(0, 0), at(1, 0), u), lerp(at(0, 1), at(1, 1), u), v);
+  }
+
+  let surfaceDirty = false;
+  function buildSurface() {                               // runs at most once per frame, only when a slider changed
+    surfaceDirty = false;
+    const { s, r } = lastSR, cls = r.cls, T = r.temp, gf = clamp(s.ghg / 100, 0, 1);
+    // HEIGHT SCALE: weaker gravity (low mass) lets mountains stand taller, so relief grows as mass falls.
+    const relief = clamp(9 / Math.pow(s.mass, .35), 3, 16);
+    const hot = clamp((T - 320) / 160, 0, 1);              // 0..1: how extreme the heat is (drives trench depth on lava worlds)
+    const seaY = cls === "hab" ? -relief * .2 : -999, lavaY = cls === "lava" ? -relief * .55 : -999;
+    const pos = tGeo.attributes.position, col = tGeo.attributes.color;
+    for (let iz = 0; iz <= SEG; iz++) for (let ix = 0; ix <= SEG; ix++) {       // nested loop: rewrite every vertex height + colour
+      const i = iz * (SEG + 1) + ix, a = nA[i], b = nB[i]; let h, R, G, B;
+      if (cls === "ice") {
+        // Crystalline: ridged noise (1-|n|) makes sharp ridges; rounding to 1.4-unit steps cuts flat facets = jagged crystal terraces.
+        h = Math.round((Math.pow(1 - Math.abs(a), 2.4) * relief * 1.8) / 1.4) * 1.4 - relief * .4 + b * .5;
+        const t = clamp((h + relief * .4) / (relief * 1.4), 0, 1);
+        R = lerp(.55, 1, t); G = lerp(.85, 1, t); B = 1;                        // icy blue valleys -> glowing white tips
+        if (t < .25) { R = .15; G = .9; B = 1; }                                // neon cyan in the lowest crevices
+      } else if (cls === "lava") {
+        // Trenches: where the river map is near 0, subtract a deep channel. Hotter planet = wider and deeper trenches.
+        const rf = clamp(1 - Math.abs(nR[i]) / (.1 + .12 * hot), 0, 1);
+        h = a * relief * .5 - rf * rf * relief * (.9 + .9 * hot);
+        R = .13 + .1 * b; G = .09; B = .08;                                     // dark basalt crust
+        if (rf > .05) { R = lerp(R, 1, rf); G = lerp(G, .35, rf); B = .02; }    // trench walls glow orange
+        if (h < lavaY + .4) { R = 1; G = .62; B = .08; }                        // lowest vertices: bright molten lava
+        else if (Math.abs(b) < .04) { R = .75; G = .18; B = .03; }              // ember cracks in the crust
+      } else if (cls === "rock") {
+        h = a * relief * .3 + nC[i] * relief * .35;                             // gentle plains + crater bowls and rims
+        const gr = clamp(.42 + .18 * b + nC[i] * .12, .15, .75); R = gr; G = gr * .97; B = gr * .94;
+      } else {
+        h = a * relief * .8;                                                    // balanced: gentle rolling hills
+        if (h < seaY - 1.2) { R = .04; G = .18; B = .55; }                      // low vertices = deep water
+        else if (h < seaY) { R = .1; G = .38; B = .85; }                        // shallows
+        else if (h < seaY + .9) { R = .86; G = .8; B = .5; }                    // sandy shore
+        else { const t = clamp((h - seaY) / (relief * .8), 0, 1); R = lerp(.15, .35, t) + .05 * b; G = lerp(.55, .42, t); B = .14; }   // green hills
+      }
+      pos.setY(i, h); col.setXYZ(i, R, G, B);
+    }
+    pos.needsUpdate = col.needsUpdate = true; tGeo.computeVertexNormals();
+    const wantFlat = cls === "ice"; if (tMat.flatShading !== wantFlat) { tMat.flatShading = wantFlat; tMat.needsUpdate = true; }   // faceted look for crystals
+
+    // Liquids: water at sea level (tinted green by methane-rich atmospheres); lava glows at the trench level
+    water.visible = cls === "hab"; water.position.y = seaY; waterMat.color.setRGB(.12 - .05 * gf, .44 + .2 * gf, .88 - .4 * gf);
+    lava.visible = cls === "lava"; lava.position.y = lavaY;
+
+    // SKY: base colour per planet type, then pushed toward translucent emerald as greenhouse gas rises
+    let sk = cls === "rock" ? [.01, .01, .03] : cls === "lava" ? [.32, .1, .05] : cls === "ice" ? [.7, .85, 1] : [.38, .72, 1];
+    if (cls !== "rock") sk = sk.map((c, k) => lerp(c, [.08, .75, .45][k], gf * (cls === "lava" ? .35 : .75)));
+    scene.background.setRGB(sk[0], sk[1], sk[2]);
+    if (!scene.fog) scene.fog = new THREE.FogExp2(0, .01);
+    scene.fog.color.setRGB(sk[0], sk[1], sk[2]); scene.fog.density = cls === "rock" ? .0004 : .007 + .02 * gf;   // thicker atmosphere = denser haze
+    starPts.visible = cls === "rock";                                           // stars only show in a sky with no air
+    hemi.color.setRGB(.5 + sk[0] * .5, .5 + sk[1] * .5, .5 + sk[2] * .5); hemi.groundColor.setRGB(cls === "lava" ? .5 : .2, cls === "lava" ? .18 : .2, cls === "lava" ? .02 : .2);
+    hemi.intensity = cls === "rock" ? .3 : .9;
+    sun.position.copy(sunDir).multiplyScalar(100); sun.intensity = clamp(1.4 * Math.sqrt(1 / (s.distance * s.distance)), .35, 3);   // starlight falls with distance
+    sunSprite.scale.setScalar(clamp(50 / Math.pow(s.distance, .8), 10, 120));
+
+    // Flora / crystals / boulders placed on the new ground
+    const mat = flora.material; mat.color.setHex(cls === "ice" ? 0x7fffff : cls === "lava" ? 0x2a1410 : cls === "rock" ? 0x6b6b6b : 0x2f9e44);
+    mat.emissive.setHex(cls === "ice" ? 0x1a8fb0 : cls === "lava" ? 0x551000 : 0x000000);
+    const dm = new THREE.Object3D();
+    for (let k = 0; k < FL; k++) {
+      const y = groundY(fx[k], fz[k]), ok = cls === "hab" ? y > seaY + 1 : cls === "lava" ? y > lavaY + 1.5 : true;
+      const hgt = cls === "ice" ? 2 + fr[k] * 7 : cls === "hab" ? 1.5 + fr[k] * 3 : cls === "lava" ? .8 + fr[k] * 1.8 : .4 + fr[k] * 1.1;
+      dm.position.set(fx[k], ok ? y + hgt / 2 : -80, fz[k]); dm.scale.set(cls === "ice" ? .6 : cls === "rock" ? 1.5 : 1.3, hgt, cls === "ice" ? .6 : cls === "rock" ? 1.5 : 1.3);
+      dm.rotation.set(0, fr[k] * 6, cls === "rock" ? fr[k] : 0); dm.updateMatrix(); flora.setMatrixAt(k, dm.matrix);
+    }
+    flora.instanceMatrix.needsUpdate = true;
+  }
+
+  // First-person controls: keys + drag to look. Gravity comes from the Mass slider, so jumps are floaty on small planets.
+  const keys = {}, me = { x: 0, y: 0, z: 0, vy: 0, yaw: 0, pitch: -.08, ground: true }; let lookDrag = null, hudT = 0;
+  addEventListener("keydown", e => { if (flight.phase !== "surface" || /INPUT|SELECT|TEXTAREA/.test(e.target.tagName)) return; keys[e.code] = true; if (e.code === "Space" || e.code.startsWith("Arrow")) e.preventDefault(); });
+  addEventListener("keyup", e => keys[e.code] = false);
+  renderer.domElement.addEventListener("pointerdown", e => { if (flight.phase === "surface") lookDrag = [e.clientX, e.clientY]; });
+  addEventListener("pointerup", () => { lookDrag = null; keys.Walk = false; });
+  addEventListener("pointermove", e => { if (!lookDrag) return; me.yaw -= (e.clientX - lookDrag[0]) * .004; me.pitch = clamp(me.pitch - (e.clientY - lookDrag[1]) * .004, -1.4, 1.4); lookDrag = [e.clientX, e.clientY]; });
+  $("walkBtn").addEventListener("pointerdown", e => { e.stopPropagation(); keys.Walk = true; });
+  $("jumpBtn").addEventListener("pointerdown", e => { e.stopPropagation(); keys.Jump = true; });
+
+  function surfaceFrame(dt) {
+    dt = Math.min(dt, .05); const grav = Math.pow(lastSR.s.mass, .46);
+    const fwd = (keys.KeyW || keys.Walk ? 1 : 0) - (keys.KeyS ? 1 : 0) + (keys.ArrowUp ? 1 : 0) - (keys.ArrowDown ? 1 : 0), side = (keys.KeyD ? 1 : 0) - (keys.KeyA ? 1 : 0);
+    me.yaw += ((keys.ArrowLeft ? 1 : 0) - (keys.ArrowRight ? 1 : 0)) * 1.6 * dt;
+    const sp = (keys.ShiftLeft ? 16 : 9) * dt;
+    me.x = clamp(me.x + (-Math.sin(me.yaw) * fwd + Math.cos(me.yaw) * side) * sp, -96, 96);
+    me.z = clamp(me.z + (-Math.cos(me.yaw) * fwd - Math.sin(me.yaw) * side) * sp, -96, 96);
+    const floor = groundY(me.x, me.z) + 1.8;
+    if (me.ground && (keys.Space || keys.Jump)) { me.vy = 6; me.ground = false; } keys.Jump = false;
+    me.vy -= 14 * grav * dt; me.y += me.vy * dt;           // heavier planet = stronger pull = shorter jumps
+    if (me.y <= floor) { me.y = floor; me.vy = 0; me.ground = true; }
+    camera.position.set(me.x, me.y, me.z); camera.rotation.set(me.pitch, me.yaw, 0);
+    sunSprite.position.copy(camera.position).addScaledVector(sunDir, 300);
+    if (lava.visible) lavaMat.color.setHSL(.04 + .015 * Math.sin(clock.elapsedTime * 3), 1, .5 + .08 * Math.sin(clock.elapsedTime * 5));   // pulsing magma
+    if ((hudT += dt) > .25) { hudT = 0; $("hud").innerHTML = `🧭 ${lastSR.r.label}<br>🌡️ ${Math.round(lastSR.r.temp)} K · ⬇ ${grav.toFixed(2)} g<br><small>WASD / arrows walk · drag to look · Space jumps</small>`; }
+  }
+
+  function startLanding() {
+    if (flight.phase !== "orbit" || mode !== "lab" || !lastSR) return;
+    if (lastSR.r.cls === "gas") { say("This is a gas giant, so there is no solid ground to land on. Lower the mass below eight Earth masses and try again!", true); return; }
+    isSurfaceMode = true; flight.phase = "plunge"; flight.t = 0;
+    flight.dir.copy(camera.position).sub(planet.position); flight.d0 = flight.dir.length(); flight.dir.normalize();
+    controls.enabled = false; $("landBtn").disabled = true; $("landBtn").textContent = "🛸 DESCENDING…";
+    say("Starting atmospheric entry. Hold on tight!");
+  }
+  function enterSurface() {                               // called once the screen is white: swap space for ground
+    labObjs.forEach(o => o.visible = false); star.visible = glow.visible = false; solar.visible = false; starLightObj.visible = false;
+    surface.visible = true; camera.fov = 68; camera.updateProjectionMatrix(); camera.rotation.order = "YXZ";
+    buildSurface(); Object.assign(me, { x: 0, z: 0, vy: 0, yaw: 0, pitch: -.08, ground: true }); me.y = groundY(0, 0) + 1.8;
+    flight.phase = "surface"; document.body.classList.add("surface"); $("flash").style.opacity = 0;
+    $("landBtn").disabled = false; $("landBtn").textContent = "🛸 RETURN TO ORBIT VIEW"; $("xenoCard").hidden = false;
+    typeLog(xenoLog(lastSR.s, lastSR.r)); say("Touchdown! Walk with W A S D, drag to look around, and press space to jump. Read the log on the left.");
+  }
+  function leaveSurfaceVisuals() {
+    surface.visible = false; scene.fog = null; scene.background.setHex(0x02030a); starPts.visible = true;
+    labObjs.forEach(o => o.visible = true); star.visible = glow.visible = true; starLightObj.visible = true;
+    camera.fov = 50; camera.updateProjectionMatrix(); camera.rotation.order = "XYZ";
+    document.body.classList.remove("surface"); $("xenoCard").hidden = true; clearInterval(typeTimer); clearTimeout(logTimer);
+  }
+  function startReturn() {
+    if (flight.phase !== "surface") return;
+    flight.phase = "flash"; $("flash").style.opacity = 1; $("landBtn").disabled = true;
+    setTimeout(() => {
+      leaveSurfaceVisuals(); flight.dir.set(.5, .35, .8).normalize(); flight.t = 0; flight.d0 = planet.scale.x * 1.01; flight.phase = "ascend";
+      $("flash").style.opacity = 0; $("landBtn").textContent = "🛸 LIFTING OFF…"; say("Lifting off! Back to orbit.");
+    }, 380);
+  }
+  hooks.exitSurface = () => {                             // instant exit (used when the student switches tabs)
+    if (flight.phase === "orbit") return;
+    leaveSurfaceVisuals(); flight.phase = "orbit"; isSurfaceMode = false; controls.enabled = true;
+    $("landBtn").disabled = false; $("landBtn").textContent = "🚀 LAND ON PLANET SURFACE"; $("flash").style.opacity = 0;
+  };
+  hooks.markSurface = () => { surfaceDirty = true; };
+  $("landBtn").onclick = () => isSurfaceMode ? startReturn() : startLanding();
+
+  function flightFrame(dt) {
+    if (flight.phase === "plunge") {
+      flight.t = Math.min(1, flight.t + dt / 2.4); const e = ease(flight.t);
+      // LERP the camera's distance from the planet centre down to just inside the cloud shell (cloud radius = 1.045 x planet radius)
+      const dist = lerp(flight.d0, planet.scale.x * 1.01, e);
+      camera.position.copy(planet.position).addScaledVector(flight.dir, dist); camera.lookAt(planet.position);
+      camera.fov = 50 + 30 * e * e; camera.updateProjectionMatrix();          // widening field of view = speed rush
+      if (flight.t >= 1) { flight.phase = "flash"; $("flash").style.opacity = 1; setTimeout(enterSurface, 400); }
+    } else if (flight.phase === "ascend") {
+      flight.t = Math.min(1, flight.t + dt / 1.8); const e = ease(flight.t);
+      camera.position.copy(planet.position).addScaledVector(flight.dir, lerp(flight.d0, 9, e)); camera.lookAt(planet.position);
+      if (flight.t >= 1) {
+        flight.phase = "orbit"; isSurfaceMode = false; controls.target.copy(planet.position); controls.enabled = true; if (controls.sync) controls.sync();
+        $("landBtn").disabled = false; $("landBtn").textContent = "🚀 LAND ON PLANET SURFACE";
+      }
+    } else if (flight.phase === "surface") {
+      if (surfaceDirty) buildSurface();
+      surfaceFrame(dt);
+    }
+  }
+
   /* --- resize --- */
   function resize() { const w = box.clientWidth || 1, h = box.clientHeight || 1; renderer.setSize(w, h); camera.aspect = w / h; camera.updateProjectionMatrix(); }
   addEventListener("resize", resize); resize();
@@ -839,6 +1129,9 @@ function init3D() {
       // Atmosphere tint: blue (habitable) / red haze (lava) / pale (ice) / tan (gas); thickness from greenhouse
       atmoMat.color.setRGB(.4 + .6 * cur.lava + .5 * cur.ice + .5 * cur.gas, .67 - .3 * cur.lava + .25 * cur.ice, 1 - .8 * cur.lava - .5 * cur.gas);
       atmoMat.opacity = curAtmo;
+      clouds.material.opacity = Math.min(.9, curAtmo * 2.7);                                   // thicker atmosphere = denser clouds
+      clouds.material.color.setRGB(1 - .35 * cur.lava, 1 - .65 * cur.lava, 1 - .75 * cur.lava); // lava worlds get dark smoky clouds
+      clouds.rotation.y += .0008;
       ringMat.opacity = target.inRing ? .38 : .2;                              // ring brightens when the planet is inside it
     }
     // Star morph: ease size/color/glow toward the Stars-tab target (physics -> pixels for the life-cycle)
@@ -856,9 +1149,10 @@ function init3D() {
     planet.rotation.y += .004;                                                       // spin on its axis
 
     // Camera follow: Lab = the exoplanet (if ticked), Planets tab = the selected planet
-    const ft = mode === "lab" && $("follow").checked ? planet : mode === "solar" && selected !== null ? sol[selected].mesh : null;
+    const ft = flight.phase !== "orbit" ? null : mode === "lab" && $("follow").checked ? planet : mode === "solar" && selected !== null ? sol[selected].mesh : null;
     if (ft) { delta.copy(ft.position).sub(controls.target); camera.position.add(delta); controls.target.copy(ft.position); }
-    controls.update();
+    if (flight.phase === "orbit") controls.update();   // OrbitControls only drives the camera in orbit view
+    flightFrame(clock.getDelta());                        // landing / surface / take-off animation
     renderer.render(scene, camera);
   }
   sceneReady = true;
