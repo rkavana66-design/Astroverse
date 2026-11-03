@@ -108,6 +108,11 @@
   @keyframes alertFlash { 50% { opacity:.55; } }
   #lockHint { position:absolute; left:50%; top:14%; transform:translateX(-50%); z-index:10; background:rgba(15,20,36,.88); color:#fff; padding:8px 14px; border-radius:10px; font-size:.85rem; pointer-events:none; }
   body:not(.spacewalk) #visor, body:not(.spacewalk) #reticle, body:not(.spacewalk) #dockAlert, body:not(.spacewalk) #lockHint { display:none; }
+  #toast { position:absolute; left:50%; bottom:22%; transform:translateX(-50%); z-index:12; background:rgba(10,18,36,.92); border:1px solid #4de0c0; color:#e8fff8; padding:10px 16px; border-radius:12px; max-width:80%; font-size:.86rem; line-height:1.45; opacity:0; transition:opacity .35s; pointer-events:none; text-align:center; }
+  #toast.show { opacity:1; }
+  body.fp #visor { display:block; }
+  #hud { max-width:350px; }
+  body.ship #visor { display:none; }
   #nova { position:absolute; left:14px; bottom:14px; right:14px; max-width:430px; display:flex; gap:10px; align-items:flex-end; z-index:6; pointer-events:none; }
   #nova > * { pointer-events:auto; }
   #novaFace { width:54px; height:54px; flex:none; border-radius:50%; position:relative; background:radial-gradient(circle at 35% 30%,#b8fff0,#4de0c0 60%,#2aa58f); box-shadow:0 0 18px rgba(77,224,192,.55); animation:novaFloat 3s ease-in-out infinite; }
@@ -152,7 +157,8 @@
     <div class="vrow">Suit Oxygen: <b id="vO2">100</b>%</div><div class="bar"><div id="vO2bar" style="width:100%;background:#4de0c0"></div></div>
     <div class="vrow">Jetpack Fuel: <b id="vFuel">100</b>%</div><div class="bar"><div id="vFuelbar" style="width:100%;background:#ffb454"></div></div>
     <div class="vrow">Current Speed: <b id="vSpeed">0.0</b> km/s</div>
-    <div class="legend" style="margin-top:12px">W / S thrust forward / back · A / D strafe · Space up · Shift down · X brake · mouse looks · E docks · 1–9 and 0 warp to a planet (5% fuel) · Esc frees the mouse. Speeds are game scale.</div>
+    <button class="btn" id="shipBtn" style="margin-top:10px">🚀 BOARD SHIP (cockpit view)</button>
+    <div class="legend" style="margin-top:12px">B boards / leaves the ship · W / S thrust forward / back · A / D strafe · Space up · Shift down · X brake · mouse looks · E docks · 1–9 and 0 warp to a planet (5% fuel) · Esc frees the mouse. Speeds are game scale.</div>
   </div>
   <div class="tab on" id="tab-lab">
     <button class="land" id="landBtn">🚀 LAND ON PLANET SURFACE</button>
@@ -238,6 +244,7 @@
   <div id="reticle"><div class="rg"></div><div id="tgtText">—</div></div>
   <div id="dockAlert" style="display:none"></div>
   <div id="lockHint" style="display:none">🖱️ Click the view to lock the mouse · Esc releases it</div>
+  <div id="toast"></div>
   <button class="walk" id="walkBtn">⬆ Walk</button><button class="walk" id="jumpBtn">⤒ Jump</button>
   <div id="nova" aria-live="polite">
     <div id="novaFace"><i></i></div>
@@ -1278,7 +1285,7 @@ function init3D() {
     return lerp(lerp(at(0, 0), at(1, 0), u), lerp(at(0, 1), at(1, 1), u), v);
   }
 
-  let surfaceDirty = false, baseHemi = .9, stormNow = 0, flashT = 0;
+  let surfaceDirty = false, baseHemi = .9, stormNow = 0, flashT = 0, curSeaY = -999, curLavaY = -999;
   function buildSurface() {                               // runs at most once per frame, only when a slider changed
     surfaceDirty = false;
     const { s, r } = lastSR, cls = r.cls, T = r.temp, gf = clamp(s.ghg / 100, 0, 1);
@@ -1288,6 +1295,7 @@ function init3D() {
     const relief = clamp(9 / Math.pow(s.mass, .35), 3, 16) * (1 + .5 * storm);   // stormy worlds get more dramatic relief
     const hot = clamp((T - 320) / 160, 0, 1);              // 0..1: how extreme the heat is (drives trench depth on lava worlds)
     const seaY = cls === "hab" ? -relief * (.2 - (hum - .5) * .5) : -999, lavaY = cls === "lava" ? -relief * .55 : -999;
+    curSeaY = seaY; curLavaY = lavaY;
     const pos = tGeo.attributes.position, col = tGeo.attributes.color;
     for (let iz = 0; iz <= SEG; iz++) for (let ix = 0; ix <= SEG; ix++) {       // nested loop: rewrite every vertex height + colour
       const i = iz * (SEG + 1) + ix, a = nA[i], b = nB[i]; let h, R, G, B;
@@ -1350,43 +1358,26 @@ function init3D() {
       dm.rotation.set(0, fr[k] * 6, cls === "rock" ? fr[k] : 0); dm.updateMatrix(); flora.setMatrixAt(k, dm.matrix);
     }
     flora.instanceMatrix.needsUpdate = true;
+    reseatProps();                                        // keep the lander, flag and samples sitting on the NEW ground
   }
 
   // First-person controls: keys + drag to look. Gravity comes from the Mass slider, so jumps are floaty on small planets.
   const keys = {}, me = { x: 0, y: 0, z: 0, vy: 0, yaw: 0, pitch: -.08, ground: true }; let lookDrag = null, hudT = 0;
-  addEventListener("keydown", e => { if ((flight.phase !== "surface" && flight.phase !== "walk") || /INPUT|SELECT|TEXTAREA/.test(e.target.tagName)) return; keys[e.code] = true; if (e.code === "Space" || e.code.startsWith("Arrow")) e.preventDefault(); });
+  addEventListener("keydown", e => { if ((flight.phase !== "surface" && flight.phase !== "walk" && flight.phase !== "cabin" && flight.phase !== "cave") || /INPUT|SELECT|TEXTAREA/.test(e.target.tagName)) return; keys[e.code] = true; if (e.code === "Space" || e.code.startsWith("Arrow")) e.preventDefault(); });
   addEventListener("keyup", e => keys[e.code] = false);
-  renderer.domElement.addEventListener("pointerdown", e => { if (flight.phase === "surface") lookDrag = [e.clientX, e.clientY]; });
+  renderer.domElement.addEventListener("pointerdown", e => { if (["surface", "cabin", "cave", "descent"].includes(flight.phase)) lookDrag = [e.clientX, e.clientY]; });
   addEventListener("pointerup", () => { lookDrag = null; keys.Walk = false; });
   addEventListener("pointermove", e => { if (!lookDrag) return; me.yaw -= (e.clientX - lookDrag[0]) * .004; me.pitch = clamp(me.pitch - (e.clientY - lookDrag[1]) * .004, -1.4, 1.4); lookDrag = [e.clientX, e.clientY]; });
   $("walkBtn").addEventListener("pointerdown", e => { e.stopPropagation(); keys.Walk = true; });
   $("jumpBtn").addEventListener("pointerdown", e => { e.stopPropagation(); keys.Jump = true; });
 
-  function surfaceFrame(dt) {
-    dt = Math.min(dt, .05); const grav = Math.pow(lastSR.s.mass, .46);
-    const fwd = (keys.KeyW || keys.Walk ? 1 : 0) - (keys.KeyS ? 1 : 0) + (keys.ArrowUp ? 1 : 0) - (keys.ArrowDown ? 1 : 0), side = (keys.KeyD ? 1 : 0) - (keys.KeyA ? 1 : 0);
-    me.yaw += ((keys.ArrowLeft ? 1 : 0) - (keys.ArrowRight ? 1 : 0)) * 1.6 * dt;
-    const sp = (keys.ShiftLeft ? 16 : 9) * dt;
-    me.x = clamp(me.x + (-Math.sin(me.yaw) * fwd + Math.cos(me.yaw) * side) * sp, -96, 96);
-    me.z = clamp(me.z + (-Math.cos(me.yaw) * fwd - Math.sin(me.yaw) * side) * sp, -96, 96);
-    const floor = groundY(me.x, me.z) + 1.8;
-    if (me.ground && (keys.Space || keys.Jump)) { me.vy = 6; me.ground = false; } keys.Jump = false;
-    me.vy -= 14 * grav * dt; me.y += me.vy * dt;           // heavier planet = stronger pull = shorter jumps
-    if (me.y <= floor) { me.y = floor; me.vy = 0; me.ground = true; }
-    camera.position.set(me.x, me.y, me.z); camera.rotation.set(me.pitch, me.yaw, 0);
-    sunSprite.position.copy(camera.position).addScaledVector(sunDir, 300);
-    if (deck.visible) deckTex.offset.x += dt * .01 * (1 + stormNow * 3);            // clouds drift faster in a storm
-    if (stormNow > .6 && flashT <= 0 && Math.random() < .006) flashT = .12;          // random lightning flash
-    if (flashT > 0) { flashT -= dt; hemi.intensity = 3; } else hemi.intensity = baseHemi;
-    if (lava.visible) lavaMat.color.setHSL(.04 + .015 * Math.sin(clock.elapsedTime * 3), 1, .5 + .08 * Math.sin(clock.elapsedTime * 5));   // pulsing magma
-    if ((hudT += dt) > .25) { hudT = 0; $("hud").innerHTML = `🧭 ${lastSR.r.label}<br>🌡️ ${Math.round(lastSR.r.temp)} K · ⬇ ${grav.toFixed(2)} g<br><small>WASD / arrows walk · drag to look · Space jumps</small>`; }
-  }
+  // surfaceFrame / descentFrame live in the REAL LANDING block below
 
   function startLanding() {
     if (holo.on) exitHolo();
     if (flight.phase !== "orbit" || mode !== "lab" || !lastSR) return;
     if (lastSR.r.cls === "gas") { say("This is a gas giant, so there is no solid ground to land on. Lower the mass below eight Earth masses and try again!", true); return; }
-    landObj = planet; landRad = planet.scale.x; landedFromWalk = false; beginPlunge(); return;
+    walk.oxygen = 100; landObj = planet; landRad = planet.scale.x; landedFromWalk = false; beginPlunge(); return;
   }
   function beginPlunge() {                                // shared by the LAND button and by docking from a space walk
     isSurfaceMode = true; flight.phase = "plunge"; flight.t = 0;
@@ -1397,19 +1388,23 @@ function init3D() {
   function enterSurface() {                               // called once the screen is white: swap space for ground
     labObjs.forEach(o => o.visible = false); star.visible = glow.visible = false; solar.visible = false; starLightObj.visible = false;
     surface.visible = true; camera.fov = 68; camera.updateProjectionMatrix(); camera.rotation.order = "YXZ";
-    buildSurface(); Object.assign(me, { x: 0, z: 0, vy: 0, yaw: 0, pitch: -.08, ground: true }); me.y = groundY(0, 0) + 1.8;
-    flight.phase = "surface"; document.body.classList.add("surface"); $("flash").style.opacity = 0;
-    $("landBtn").disabled = false; $("landBtn").textContent = "🛸 RETURN TO ORBIT VIEW"; $("xenoCard").hidden = false;
-    typeLog(xenoLog(lastSR.s, lastSR.r)); say("Touchdown! Walk with W A S D, drag to look around, and press space to jump. Read the log on the left.");
+    buildSurface(); document.body.classList.add("surface"); $("flash").style.opacity = 0;
+    $("landBtn").textContent = "🛸 RETURN TO ORBIT VIEW"; $("xenoCard").hidden = false; props.recall = false;
+    beginDescent();                                       // powered descent -> touchdown -> astronaut exits -> explore
   }
   function leaveSurfaceVisuals() {
     surface.visible = false; scene.fog = null; scene.background.setHex(0x02030a); starPts.visible = true;
     labObjs.forEach(o => o.visible = true); star.visible = glow.visible = true; starLightObj.visible = true;
     camera.fov = 50; camera.updateProjectionMatrix(); camera.rotation.order = "XYZ";
-    document.body.classList.remove("surface"); $("xenoCard").hidden = true; clearInterval(typeTimer); clearTimeout(logTimer);
+    document.body.classList.remove("surface", "fp"); cave.g.visible = false; ambient.intensity = .5; $("xenoCard").hidden = true; clearInterval(typeTimer); clearTimeout(logTimer);
   }
-  function startReturn() {
-    if (flight.phase !== "surface") return;
+  function startReturn(force) {
+    const inCab = flight.phase === "cabin" && props.boarded;       // already aboard: launch directly
+    if (flight.phase !== "surface" && !inCab) return;
+    const dl = inCab ? 0 : Math.hypot(me.x - site.x, me.z - site.z);   // a real astronaut must walk back to the lander before launching
+    if (!force && dl > 15) {
+      if (performance.now() - props.warnT > 4000) { props.warnT = performance.now(); toast(`The lander is ${Math.round(dl)} m away. Walk back to it (follow the arrow), or press the button again within 4 seconds for an emergency pickup.`, 6000); return; }
+    }
     flight.phase = "flash"; $("flash").style.opacity = 1; $("landBtn").disabled = true;
     setTimeout(() => {
       leaveSurfaceVisuals(); if (landedFromWalk) { labObjs.forEach(o => o.visible = false); solar.visible = true; }   // back to the solar-system scene
@@ -1441,6 +1436,10 @@ function init3D() {
         flight.phase = "orbit"; isSurfaceMode = false; controls.target.copy(planet.position); controls.enabled = true; if (controls.sync) controls.sync();
         $("landBtn").disabled = false; $("landBtn").textContent = "🚀 LAND ON PLANET SURFACE";
       }
+    } else if (flight.phase === "descent" || flight.phase === "cabin" || flight.phase === "ladder") {
+      descentFrame(dt);
+    } else if (flight.phase === "cave") {
+      caveFrame(dt);
     } else if (flight.phase === "walk") {
       walkFrame(dt);
     } else if (flight.phase === "surface") {
@@ -1546,6 +1545,466 @@ function init3D() {
   $("holoFlip").onchange = () => holo.flip = $("holoFlip").checked;
 
   /* =====================================================================
+     REAL LANDING, INSIDE THE LANDER, CAVES AND THE SHIP COCKPIT
+     Flow:  descent (you sit in the cockpit and look out of the window)  ->  touchdown  ->  unbuckle and walk the
+     cabin  ->  airlock cycle  ->  hatch opens  ->  climb down the ladder  ->  explore (samples, flag, caves)  ->
+     climb back up the ladder  ->  launch.
+
+     THE LANDER IS WALKABLE. The crew lander is built at LS = 2.4 x scale, so its cabin is a hollow cylinder about
+     5.5 m wide. Its wall is two cylinder ARCS that leave two gaps: a window (facing -Z) and a hatch (+X). Because the
+     cabin is real geometry in the same 3D world, through the window you see the real planet, terrain and dust.
+     The camera is simply placed inside:  eye = landerPosition + (cab.x, floorHeight + 1.55, cab.z).
+
+     THE DESCENT MATH. To land softly from height h with constant braking deceleration a, the speed allowed at that
+     height is  v(h) = v_touch + sqrt(2 a (h - h0))  (from v^2 = v0^2 + 2 a d).  Each frame h <- h - v dt.
+
+     CAVES. A tunnel is a circle swept along a 3D curve. At each of 160 steps along the curve we build a ring:
+         T = curve tangent,   side = normalize(T x worldUp),   up = side x T      (a stable frame that never rolls)
+         ring point = centre + (cos a * side + sin a * up) * (radius + bump)
+     "bump" is a cheap 3D noise, smaller on the floor so you can walk. The player is NOT free-moving: a single number
+     u (0..1) is the distance along the curve, plus a sideways offset "lat". Eye = centre(u) + side*lat + up*(1.7 - radius).
+     ===================================================================== */
+  const LS = 2.4, LR = 5.3;                                  // lander scale; solid radius (m) around its centre
+  const dmy = new THREE.Object3D(), vA = new THREE.Vector3(), vB = new THREE.Vector3(), cA = new THREE.Vector3(), cB = new THREE.Vector3(), cC = new THREE.Vector3();
+  const ambient = scene.children.find(o => o.isAmbientLight);
+  const props = { ready: false, third: false, stride: 0, side: 1, fpI: 0, phase: 0, suit: 100, shake: 0, warnT: 0, recall: false, boarded: false };
+  const site = { x: 0, z: 0 }, dsc = { h: 0, t: 0, v: 0, fuel: 100, landed: false, exitT: 0, ang: 0, cam0: new THREE.Vector3() };
+  const mission = { samples: 0, flag: false, cave: false, done: false }, NSAMP = 5;
+  const cab = { x: 0, z: .5, airlock: -1, door: 0, ext: false }, lad = { t: 0, dir: 1, pts: [0, 1, 2, 3].map(() => new THREE.Vector3()) };
+  const SCI = { hab: ["Sandstone with ripple marks", "evidence that liquid water once flowed here"], ice: ["Glassy ice crystal", "trapped gas bubbles: a frozen record of the old atmosphere"],
+                lava: ["Vesicular basalt", "gas bubbles frozen into rock that cooled quickly from lava"], rock: ["Impact breccia", "rock shattered and welded together by a meteorite strike"] };
+  const CAVESCI = { hab: "Calcite crystals grow only from slow-moving water, so this cave once held a long-lived underground pool.", ice: "Layered ice with dust bands: every stripe is a year of ancient climate, like tree rings.",
+                    lava: "A lava tube: the roof formed when the outside of a lava river cooled while the inside kept flowing away.", rock: "A buried ice lens, shielded from radiation. A place where microbes, or one day a base, could shelter." };
+  const SAMPCOL = { hab: 0x5fe07a, ice: 0x7fe9ff, lava: 0xff7a2a, rock: 0xd0d0d8 }, DUSTCOL = { hab: 0x8a7556, ice: 0xdfeeff, lava: 0x4a3f3a, rock: 0x8f8f95 };
+  function toast(t, ms) { const el = $("toast"); el.textContent = t; el.classList.add("show"); clearTimeout(toast.t); toast.t = setTimeout(() => el.classList.remove("show"), ms || 4800); }
+
+  // ---- small in-world computer screens (a canvas used as a texture) ----
+  function makeScreen(w, h) {
+    const cv = document.createElement("canvas"); cv.width = 256; cv.height = 128; const c = cv.getContext("2d"), tex = new THREE.CanvasTexture(cv);
+    const mesh = new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshBasicMaterial({ map: tex }));
+    mesh.userData.write = lines => { c.fillStyle = "#04140f"; c.fillRect(0, 0, 256, 128); c.fillStyle = "#58ffb0"; c.font = "bold 19px monospace"; lines.forEach((t, i) => c.fillText(t, 10, 27 + i * 25)); tex.needsUpdate = true; };
+    mesh.userData.write(["BOOTING..."]); return mesh;
+  }
+
+  // ---- the crew lander: exterior + a hollow, walkable cabin ----
+  function makeLander() {
+    const g = new THREE.Group(), white = new THREE.MeshStandardMaterial({ color: 0xe8e8ee, roughness: .5, metalness: .3 }), gold = new THREE.MeshStandardMaterial({ color: 0xd4a017, roughness: .35, metalness: .8 }),
+      dark = new THREE.MeshStandardMaterial({ color: 0x2a2f3a, roughness: .6 }), hull = new THREE.MeshStandardMaterial({ color: 0x4a5266, roughness: .7, side: THREE.DoubleSide }), led = new THREE.MeshBasicMaterial({ color: 0x5fe0ff });
+    const add = (geo, mat, x, y, z, rx) => { const m = new THREE.Mesh(geo, mat); m.position.set(x, y, z); if (rx) m.rotation.x = rx; g.add(m); return m; };
+    add(new THREE.CylinderGeometry(1.5, 1.9, 1.8, 8), gold, 0, 2.3, 0);                // descent stage (its top is the cabin floor at y = 3.2)
+    add(new THREE.CylinderGeometry(1.15, 1.15, .06, 24), dark, 0, 3.17, 0);             // cabin floor
+    add(new THREE.CylinderGeometry(1.15, 1.15, .06, 24), hull, 0, 4.42, 0);             // cabin ceiling
+    add(new THREE.ConeGeometry(1.2, .6, 16), white, 0, 4.75, 0);                        // roof cap
+    const wall = (a0, a1) => add(new THREE.CylinderGeometry(1.15, 1.15, 1.2, 16, 1, true, a0, a1 - a0), hull, 0, 3.8, 0);   // wall arc (theta 0 = +Z)
+    wall(Math.PI / 2 + .35, Math.PI - .75); wall(Math.PI + .75, 2.5 * Math.PI - .35);  // the two gaps are the WINDOW (-Z) and the HATCH (+X)
+    const door = add(new THREE.BoxGeometry(.05, 1.15, .8), white, 1.13, 3.78, 0);       // hatch door: slides down into the descent stage
+    add(new THREE.BoxGeometry(.5, .04, .9), dark, 1.4, 3.2, 0);                         // step outside the hatch
+    for (const z of [-.3, .3]) add(new THREE.CylinderGeometry(.03, .03, 3.3, 6), white, 1.55, 1.55, z);   // ladder rails
+    for (let i = 0; i < 9; i++) add(new THREE.CylinderGeometry(.02, .02, .6, 5), white, 1.55, .4 + i * .33, 0, Math.PI / 2);   // rungs
+    add(new THREE.BoxGeometry(1.3, .45, .35), dark, 0, 3.5, -.85, .4);                 // pilot console under the window
+    const scr = [[0, .9], [-.62, .45], [.62, .45]].map(([x, w]) => { const m = makeScreen(w, .45); m.position.set(x, 3.68, -.7); m.rotation.x = -.8; g.add(m); return m; });
+    for (const x of [-.5, .5]) { add(new THREE.BoxGeometry(.4, .12, .4), dark, x, 3.4, .12); add(new THREE.BoxGeometry(.4, .6, .08), dark, x, 3.72, .34); }   // two seats
+    add(new THREE.TorusGeometry(1.0, .015, 6, 32), led, 0, 4.38, 0, Math.PI / 2);        // ceiling light ring
+    const cabLight = new THREE.PointLight(0xfff0d8, 1.3, 10); cabLight.position.set(0, 4.2, 0); g.add(cabLight);
+    add(new THREE.ConeGeometry(.6, .9, 12), dark, 0, 1.0, 0);                           // engine bell
+    for (let k = 0; k < 4; k++) {                                                       // four landing legs
+      const a = k * Math.PI / 2 + Math.PI / 4, pv = new THREE.Group();
+      pv.position.set(Math.cos(a) * 1.1, 1.755, Math.sin(a) * 1.1); pv.rotation.set(0, -a, .5);
+      const leg = new THREE.Mesh(new THREE.CylinderGeometry(.07, .07, 2, 6), white); leg.position.y = -1; pv.add(leg); g.add(pv);
+      add(new THREE.CylinderGeometry(.4, .4, .08, 10), white, Math.cos(a) * 2.06, .04, Math.sin(a) * 2.06);
+    }
+    const plume = add(new THREE.ConeGeometry(.55, 2.6, 12), new THREE.MeshBasicMaterial({ color: 0xffa040, transparent: true, opacity: .85, blending: THREE.AdditiveBlending, depthWrite: false }), 0, -.3, 0, Math.PI);
+    plume.visible = false;
+    const light = new THREE.PointLight(0xff8a3c, 0, 40); light.position.set(0, .2, 0); g.add(light);
+    g.scale.setScalar(LS); g.userData = { plume, light, door, scr, cabLight }; return g;
+  }
+  function makeAstronaut() {
+    const g = new THREE.Group(), suit = new THREE.MeshStandardMaterial({ color: 0xf4f4f8, roughness: .65 }), gray = new THREE.MeshStandardMaterial({ color: 0x9aa0aa, roughness: .6 }), gold = new THREE.MeshStandardMaterial({ color: 0xd9a520, roughness: .15, metalness: .9 });
+    const box = (w, h, d, mat, x, y, z, parent) => { const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat); m.position.set(x, y, z); (parent || g).add(m); return m; };
+    box(.55, .7, .32, suit, 0, 1.15, 0); box(.46, .62, .2, gray, 0, 1.15, .26);
+    const helmet = new THREE.Mesh(new THREE.SphereGeometry(.27, 16, 12), suit); helmet.position.y = 1.78; g.add(helmet);
+    const visor = new THREE.Mesh(new THREE.SphereGeometry(.2, 16, 12), gold); visor.position.set(0, 1.78, -.13); visor.scale.set(1, .85, .7); g.add(visor);
+    const limb = (x, y, w, h) => { const pv = new THREE.Group(); pv.position.set(x, y, 0); box(w, h, w + .04, suit, 0, -h / 2, 0, pv); g.add(pv); return pv; };
+    return { g, legL: limb(-.14, .8, .22, .8), legR: limb(.14, .8, .22, .8), armL: limb(-.38, 1.45, .17, .6), armR: limb(.38, 1.45, .17, .6) };
+  }
+  function makeFlag() {
+    const g = new THREE.Group(), pole = new THREE.Mesh(new THREE.CylinderGeometry(.03, .03, 2.4, 8), new THREE.MeshStandardMaterial({ color: 0xcccccc, metalness: .6 })); pole.position.y = 1.2; g.add(pole);
+    const cv = document.createElement("canvas"); cv.width = 96; cv.height = 64; const c = cv.getContext("2d");
+    c.fillStyle = "#1b3a8a"; c.fillRect(0, 0, 96, 64); c.fillStyle = "#ffffff"; for (let k = 0; k < 4; k++) c.fillRect(0, 6 + k * 16, 96, 6); c.fillStyle = "#e0392b"; c.fillRect(0, 0, 40, 32);
+    const cloth = new THREE.Mesh(new THREE.PlaneGeometry(1.1, .74), new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(cv), side: THREE.DoubleSide })); cloth.position.set(.58, 2.0, 0); g.add(cloth);
+    g.visible = false; return g;
+  }
+  function makeGate() {                                      // the cave mouth: a stone arch, a black opening and a tall cyan beacon
+    const g = new THREE.Group();
+    const arch = new THREE.Mesh(new THREE.TorusGeometry(1.9, .55, 8, 18, Math.PI), new THREE.MeshStandardMaterial({ color: 0x4a4a52, roughness: 1 })); g.add(arch);
+    g.add(new THREE.Mesh(new THREE.CircleGeometry(1.9, 24, 0, Math.PI), new THREE.MeshBasicMaterial({ color: 0x000000, side: THREE.DoubleSide })));
+    const beam = new THREE.Mesh(new THREE.CylinderGeometry(.08, .08, 16, 6), new THREE.MeshBasicMaterial({ color: 0x66ccff, transparent: true, opacity: .6, blending: THREE.AdditiveBlending, depthWrite: false })); beam.position.y = 8; g.add(beam);
+    const lamp = new THREE.PointLight(0x66ccff, 1.2, 14); lamp.position.set(0, 1.2, 1.5); g.add(lamp); return g;
+  }
+  const landerG = makeLander(), astro = makeAstronaut(), flag = makeFlag(), gate = makeGate();
+  astro.g.visible = false; landerG.visible = false; gate.visible = false; surface.add(landerG, astro.g, flag, gate);
+  const samples = Array.from({ length: NSAMP }, () => {
+    const m = new THREE.Mesh(new THREE.OctahedronGeometry(.38), new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0x335533, roughness: .3 })); surface.add(m);
+    return { mesh: m, taken: false, base: 0, ph: Math.random() * 6 };
+  });
+
+  // ---- Dust puffs (one InstancedMesh of 140 blobs, recycled) and footprints (90 flat boxes, recycled) ----
+  const ND = 140, dust = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(1, 0), new THREE.MeshBasicMaterial({ color: 0x9a8a70, transparent: true, opacity: .42, depthWrite: false }), ND);
+  const dP = new Float32Array(ND * 3), dV = new Float32Array(ND * 3), dL = new Float32Array(ND), dMax = new Float32Array(ND), dS = new Float32Array(ND);
+  dust.frustumCulled = false; surface.add(dust);
+  function emitDust(x, y, z, n, speed, up) {
+    for (let k = 0, i = 0; k < n; k++) {
+      while (i < ND && dL[i] > 0) i++; if (i >= ND) return;
+      const a = Math.random() * 6.283, sp = speed * (.4 + Math.random() * .6);
+      dP[i * 3] = x; dP[i * 3 + 1] = y + .1; dP[i * 3 + 2] = z; dV[i * 3] = Math.cos(a) * sp; dV[i * 3 + 1] = up * Math.random(); dV[i * 3 + 2] = Math.sin(a) * sp;
+      dL[i] = dMax[i] = .9 + Math.random() * 1.1; dS[i] = .25 + Math.random() * .5;
+    }
+  }
+  function dustFrame(dt, g) {                              // drift, gravity, drag, grow, then fade by shrinking
+    let touched = false;
+    for (let i = 0; i < ND; i++) {
+      if (dL[i] <= 0) { if (dS[i] > 0) { dS[i] = 0; dmy.position.set(0, -999, 0); dmy.scale.setScalar(0); dmy.updateMatrix(); dust.setMatrixAt(i, dmy.matrix); touched = true; } continue; }
+      dL[i] -= dt; dV[i * 3 + 1] -= g * dt * .5; const drag = 1 - 1.2 * dt; dV[i * 3] *= drag; dV[i * 3 + 2] *= drag;
+      dP[i * 3] += dV[i * 3] * dt; dP[i * 3 + 1] += dV[i * 3 + 1] * dt; dP[i * 3 + 2] += dV[i * 3 + 2] * dt;
+      const gy = groundY(dP[i * 3], dP[i * 3 + 2]) + .05; if (dP[i * 3 + 1] < gy) { dP[i * 3 + 1] = gy; dV[i * 3 + 1] = 0; }
+      const k = Math.max(0, dL[i] / dMax[i]);
+      dmy.position.set(dP[i * 3], dP[i * 3 + 1], dP[i * 3 + 2]); dmy.scale.setScalar(dS[i] * (1.5 + (1 - k) * 2.2) * Math.min(1, k * 3)); dmy.updateMatrix(); dust.setMatrixAt(i, dmy.matrix); touched = true;
+    }
+    if (touched) dust.instanceMatrix.needsUpdate = true;
+  }
+  const NFP = 90, prints = new THREE.InstancedMesh(new THREE.BoxGeometry(.22, .02, .42), new THREE.MeshBasicMaterial({ color: 0x111418, transparent: true, opacity: .5 }), NFP);
+  prints.frustumCulled = false; surface.add(prints);
+  function clearPrints() { dmy.position.set(0, -999, 0); dmy.scale.setScalar(0); dmy.updateMatrix(); for (let i = 0; i < NFP; i++) prints.setMatrixAt(i, dmy.matrix); prints.instanceMatrix.needsUpdate = true; }
+  clearPrints();
+  function stampPrint(x, z, yaw, side) {
+    dmy.position.set(x + Math.cos(yaw) * .14 * side, groundY(x, z) + .03, z - Math.sin(yaw) * .14 * side); dmy.rotation.set(0, yaw, 0); dmy.scale.setScalar(1); dmy.updateMatrix();
+    dmy.rotation.set(0, 0, 0); prints.setMatrixAt(props.fpI++ % NFP, dmy.matrix); prints.instanceMatrix.needsUpdate = true;
+  }
+
+  // ---- World setup ----
+  const dry = y => lastSR.r.cls === "hab" ? y > curSeaY + 1 : lastSR.r.cls === "lava" ? y > curLavaY + 3 : true;
+  const ent = { x: 0, z: 0 };
+  function setupWorld() {
+    const cls = lastSR.r.cls; let best = null, bs = 1e9;
+    for (let x = -50; x <= 50; x += 5) for (let z = -50; z <= 50; z += 5) {            // flattest dry spot near the middle
+      const y = groundY(x, z); if (!dry(y)) continue;
+      const score = (Math.abs(groundY(x + 3, z) - y) + Math.abs(groundY(x, z + 3) - y)) * 3 + Math.hypot(x, z) * .02; if (score < bs) { bs = score; best = { x, z }; }
+    }
+    Object.assign(site, best || { x: 0, z: 0 });
+    let n = 0, tries = 0;
+    while (n < NSAMP && tries++ < 500) {                                                // rock samples 20-76 m from the lander
+      const a = Math.random() * 6.283, r = 20 + Math.random() * 56, x = clamp(site.x + Math.cos(a) * r, -92, 92), z = clamp(site.z + Math.sin(a) * r, -92, 92), y = groundY(x, z);
+      if (!dry(y)) continue; const sm = samples[n++]; sm.taken = false; sm.base = y + .45; sm.mesh.position.set(x, sm.base, z); sm.mesh.visible = true;
+    }
+    for (tries = 0; tries < 400; tries++) {                                             // cave mouth 35-70 m away on dry ground
+      const a = Math.random() * 6.283, r = 35 + Math.random() * 35, x = clamp(site.x + Math.cos(a) * r, -90, 90), z = clamp(site.z + Math.sin(a) * r, -90, 90);
+      if (dry(groundY(x, z))) { ent.x = x; ent.z = z; break; }
+    }
+    gate.position.set(ent.x, groundY(ent.x, ent.z), ent.z); gate.rotation.y = Math.atan2(site.x - ent.x, site.z - ent.z); gate.visible = true;
+    samples.forEach(sm => { sm.mesh.material.color.setHex(SAMPCOL[cls] || 0xffffff); sm.mesh.material.emissive.setHex(SAMPCOL[cls] || 0xffffff); sm.mesh.material.emissiveIntensity = .55; });
+    dust.material.color.setHex(DUSTCOL[cls] || 0x9a8a70); clearPrints(); dL.fill(0);
+    flag.visible = false; Object.assign(mission, { samples: 0, flag: false, cave: false, done: false }); Object.assign(props, { ready: true, third: false, suit: 100, shake: 0, stride: 0, boarded: false });
+    astro.g.visible = false;
+  }
+  function reseatProps() {                                 // sliders can reshape the ground: keep everything sitting on it
+    if (!props.ready) return;
+    landerG.position.set(site.x, groundY(site.x, site.z) + (flight.phase === "descent" && !dsc.landed ? dsc.h : 0), site.z);
+    flag.position.y = groundY(flag.position.x, flag.position.z); gate.position.y = groundY(ent.x, ent.z);
+    samples.forEach(sm => { sm.base = groundY(sm.mesh.position.x, sm.mesh.position.z) + .45; });
+  }
+  function atmosFrame(dt) {                                // sun, drifting storm deck, lightning, lava glow
+    sunSprite.position.copy(camera.position).addScaledVector(sunDir, 300);
+    if (deck.visible) deckTex.offset.x += dt * .01 * (1 + stormNow * 3);
+    if (stormNow > .6 && flashT <= 0 && Math.random() < .006) flashT = .12;
+    if (flashT > 0) { flashT -= dt; hemi.intensity = 3; } else hemi.intensity = baseHemi;
+    if (lava.visible) lavaMat.color.setHSL(.04 + .015 * Math.sin(clock.elapsedTime * 3), 1, .5 + .08 * Math.sin(clock.elapsedTime * 5));
+  }
+
+  // ---- PHASE 1: descent (cockpit), touchdown, cabin, airlock, ladder ----
+  function beginDescent() {
+    setupWorld(); Object.assign(dsc, { h: 130, t: 0, v: 0, fuel: 100, landed: false, exitT: 0, ang: .6 });
+    Object.assign(cab, { x: 0, z: .5, airlock: -1, door: 0, ext: false }); me.yaw = 0; me.pitch = -.4;     // yaw 0 = looking out of the window (-Z)
+    landerG.visible = true; landerG.userData.plume.visible = true; landerG.userData.door.position.y = 3.78; landerG.position.set(site.x, groundY(site.x, site.z) + dsc.h, site.z);
+    flight.phase = "descent"; $("landBtn").disabled = true; $("xenoText").textContent = ">> LINK ESTABLISHED. AWAITING TOUCHDOWN...";
+    toast("You are strapped into the cockpit. Look out of the window (drag the mouse). C switches to an outside camera.", 6000); say("Powered descent. You are in the cockpit.");
+  }
+  function startLadder(dir) {                              // dir +1 = climb DOWN to the ground, -1 = climb UP into the lander
+    const gy = groundY(site.x, site.z), top = gy + dsc.h + 3.2 * LS + 1.55, bot = gy + 1.8, P = lad.pts;
+    P[0].set(site.x + 2.3, top, site.z); P[1].set(site.x + 3.3, top - .2, site.z); P[2].set(site.x + 3.85, bot + .4, site.z); P[3].set(site.x + 5.7, bot, site.z);
+    lad.t = 0; lad.dir = dir; me.yaw = -Math.PI / 2; me.pitch = -.4; flight.phase = "ladder"; toast(dir > 0 ? "Climbing down the ladder…" : "Climbing up into the lander…", 2500);
+  }
+  function ladderFrame(dt) {
+    lad.t = Math.min(1, lad.t + dt / 3.2); const s = lad.dir > 0 ? lad.t : 1 - lad.t, P = lad.pts; let a, b, f;
+    if (s < .18) { a = P[0]; b = P[1]; f = s / .18; } else if (s < .86) { a = P[1]; b = P[2]; f = (s - .18) / .68; } else { a = P[2]; b = P[3]; f = (s - .86) / .14; }
+    camera.position.lerpVectors(a, b, f); if (s > .18 && s < .86) camera.position.y += Math.sin(lad.t * 40) * .05;   // rung-by-rung bob
+    me.pitch = s > .86 ? -.05 : -.45; camera.rotation.set(me.pitch, me.yaw, 0);
+    if (lad.t >= 1) {
+      if (lad.dir > 0) {                                   // down: step onto the ground and start exploring
+        Object.assign(me, { x: P[3].x, z: P[3].z, y: groundY(P[3].x, P[3].z) + 1.8, vy: 0, ground: true, pitch: -.05 });
+        flight.phase = "surface"; document.body.classList.add("fp"); $("landBtn").disabled = false; typeLog(xenoLog(lastSR.s, lastSR.r));
+        toast("Mission: collect 5 rock samples (E) and plant the flag (F). A cave mouth with a cyan beacon is on the map too. V switches camera.", 8000); say("Astronaut on the surface. Collect five samples, plant the flag and find the cave.");
+      } else { flight.phase = "cabin"; props.boarded = true; Object.assign(cab, { x: 2.0, z: 0 }); document.body.classList.remove("fp"); toast("Aboard. The hatch seals. Press the RETURN button to launch.", 5000); say("Welcome aboard. Press return to launch."); }
+    }
+  }
+  let scrT = 0;
+  function descentFrame(dt) {
+    dt = Math.min(dt, .05); if (surfaceDirty) buildSurface();
+    const grav = Math.pow(lastSR.s.mass, .46), gy = groundY(site.x, site.z), U = landerG.userData;
+    if (flight.phase === "descent" && !dsc.landed) {
+      dsc.t += dt; dsc.v = .9 + Math.sqrt(2 * (3 + 3 * grav) * Math.max(dsc.h - 1, 0));   // v(h) = v_touch + sqrt(2 a (h - h0))
+      dsc.h = Math.max(0, dsc.h - dsc.v * dt); dsc.fuel = Math.max(0, 100 - dsc.t * 4);
+      const thr = clamp(.35 + dsc.v / 45, .3, 1);
+      U.plume.visible = true; U.plume.scale.set(1, thr * (.9 + Math.random() * .25), 1); U.plume.material.opacity = .6 + .3 * thr; U.light.intensity = thr * 6;
+      if (dsc.h < 14) emitDust(site.x, gy, site.z, Math.ceil(4 * thr * (1 - dsc.h / 14)), 10 + 6 * thr, 2);
+      if (dsc.h <= 0) { dsc.landed = true; dsc.v = 0; U.plume.visible = false; U.light.intensity = 0; props.shake = 1; emitDust(site.x, gy, site.z, 50, 16, 4); dsc.cam0.copy(camera.position); toast("TOUCHDOWN. Engines off."); say("Touchdown!"); }
+    }
+    if (flight.phase === "descent" && dsc.landed && (dsc.exitT += dt) > 1.6) {
+      flight.phase = "cabin"; toast("Unbuckle: walk around the cabin with W A S D. At the hatch (the open side on the right) press E to start the airlock.", 8000); say("Walk to the hatch and start the airlock.");
+    }
+    landerG.position.set(site.x, gy + dsc.h, site.z); dsc.ang += dt * .12;
+    if (cab.airlock >= 0 && cab.airlock < 1) {             // airlock cycle: 3.5 s with a flashing red light
+      cab.airlock = Math.min(1, cab.airlock + dt / 3.5); U.cabLight.color.setHex(Math.sin(clock.elapsedTime * 14) > 0 ? 0xff2a2a : 0xfff0d8);
+      if (cab.airlock >= 1) { U.cabLight.color.setHex(0xfff0d8); toast("Airlock cycled. Hatch opening. Walk to the opening and press E to climb down.", 6000); }
+    }
+    cab.door = clamp(cab.door + ((cab.airlock >= 1 && !props.boarded) ? 1 : -1) * dt / 1.2, 0, 1); U.door.position.y = 3.78 - cab.door * 1.2;   // hatch slides down / up
+    if (flight.phase === "ladder") ladderFrame(dt);
+    else if (cab.ext && flight.phase === "descent") {      // optional outside camera: circle the lander
+      camera.position.set(site.x + Math.cos(dsc.ang) * 30, gy + dsc.h + 8 + dsc.h * .1, site.z + Math.sin(dsc.ang) * 30); camera.lookAt(site.x, gy + dsc.h + 6, site.z);
+    } else {                                               // INSIDE the cabin: the camera sits at eye height above the cabin floor
+      if (flight.phase === "cabin") {
+        const fwd = (keys.KeyW || keys.Walk ? 1 : 0) - (keys.KeyS ? 1 : 0) + (keys.ArrowUp ? 1 : 0) - (keys.ArrowDown ? 1 : 0), side = (keys.KeyD ? 1 : 0) - (keys.KeyA ? 1 : 0);
+        me.yaw += ((keys.ArrowLeft ? 1 : 0) - (keys.ArrowRight ? 1 : 0)) * 1.6 * dt; const sp = 2.2 * dt;
+        cab.x += (-Math.sin(me.yaw) * fwd + Math.cos(me.yaw) * side) * sp; cab.z += (-Math.cos(me.yaw) * fwd - Math.sin(me.yaw) * side) * sp;
+        const r = Math.hypot(cab.x, cab.z); if (r > 2.45) { cab.x *= 2.45 / r; cab.z *= 2.45 / r; }   // stay inside the circular wall
+        cab.z = Math.max(cab.z, -1.3);                                                                   // and behind the console
+        if (cab.airlock >= 1 && cab.x > 2.2 && cab.door > .9 && !props.boarded) cab.x = Math.min(cab.x, 2.45);
+      }
+      camera.position.set(site.x + cab.x, gy + dsc.h + 3.2 * LS + 1.55, site.z + cab.z); camera.rotation.set(me.pitch, me.yaw, 0);
+    }
+    if (props.shake > 0) { props.shake -= dt; camera.position.y += (Math.random() - .5) * .25 * props.shake; }
+    if (flight.phase === "descent" && !dsc.landed) camera.position.y += (Math.random() - .5) * .03 * (dsc.v / 30);   // engine rumble
+    dustFrame(dt, 9.8 * grav); atmosFrame(dt);
+    const atHatch = cab.x > 1.6 && Math.abs(cab.z) < 1.4;
+    if ((scrT += dt) > .2) {                               // live cockpit screens + HUD text (5 times a second)
+      scrT = 0; const [m, l, r] = U.scr;
+      m.userData.write(dsc.landed ? ["SYSTEMS NOMINAL", `O2 ${Math.round(walk.oxygen)}%`, `OUTSIDE ${Math.round(lastSR.r.temp - 273)} C`, `GRAV ${grav.toFixed(2)} g`] : ["POWERED DESCENT", `ALT ${dsc.h.toFixed(0)} m`, `RATE ${dsc.v.toFixed(1)} m/s`, `FUEL ${dsc.fuel.toFixed(0)}%`]);
+      l.userData.write(["ENGINE", dsc.landed ? "OFF" : "BURN", `T+ ${dsc.t.toFixed(0)} s`]); r.userData.write(["HATCH", cab.door > .9 ? "OPEN" : cab.airlock >= 0 && cab.airlock < 1 ? "CYCLING" : "SEALED", `AIR ${Math.round((1 - Math.min(1, cab.airlock < 0 ? 0 : cab.airlock)) * 100)}%`]);
+      let txt;
+      if (flight.phase === "descent") txt = dsc.landed ? "🛬 Touchdown! Settling…" : `🛬 POWERED DESCENT<br>Altitude ${dsc.h.toFixed(0)} m · Descent ${dsc.v.toFixed(1)} m/s · Fuel ${dsc.fuel.toFixed(0)}%<br><small>Drag to look out of the window · C: outside camera</small>`;
+      else if (flight.phase === "ladder") txt = "🪜 Climbing the ladder…";
+      else txt = props.boarded ? "🚀 INSIDE THE LANDER<br>Hatch sealed. Press the RETURN button to launch." : `🚀 INSIDE THE LANDER · Hatch ${cab.door > .9 ? "open" : "sealed"}<br>${cab.airlock >= 0 && cab.airlock < 1 ? `AIRLOCK: depressurising… ${Math.round(cab.airlock * 100)}%` : atHatch ? (cab.airlock < 0 ? "E: start the airlock cycle" : cab.door > .9 ? "E: climb down the ladder" : "") : "Walk to the hatch (right side) · WASD · drag to look"}`;
+      $("hud").innerHTML = txt;
+    }
+  }
+
+  // ---- PHASE 2: exploring on foot ----
+  const ARROWS = ["⬆️", "↗️", "➡️", "↘️", "⬇️", "↙️", "⬅️", "↖️"], arrowTo = (tx, tz) => {
+    const vx = tx - me.x, vz = tz - me.z, th = Math.atan2(vx * Math.cos(me.yaw) - vz * Math.sin(me.yaw), -vx * Math.sin(me.yaw) - vz * Math.cos(me.yaw));
+    return ARROWS[((Math.round(th / (Math.PI / 4)) % 8) + 8) % 8];
+  };
+  let sHud = 0;
+  function surfaceFrame(dt) {
+    dt = Math.min(dt, .05); const grav = Math.pow(lastSR.s.mass, .46);
+    const fwd = (keys.KeyW || keys.Walk ? 1 : 0) - (keys.KeyS ? 1 : 0) + (keys.ArrowUp ? 1 : 0) - (keys.ArrowDown ? 1 : 0), side = (keys.KeyD ? 1 : 0) - (keys.KeyA ? 1 : 0);
+    me.yaw += ((keys.ArrowLeft ? 1 : 0) - (keys.ArrowRight ? 1 : 0)) * 1.6 * dt;
+    const spd = (keys.ShiftLeft ? 9 : 4.5) / Math.pow(grav, .3) * dt, px = me.x, pz = me.z;
+    me.x = clamp(me.x + (-Math.sin(me.yaw) * fwd + Math.cos(me.yaw) * side) * spd, -96, 96);
+    me.z = clamp(me.z + (-Math.cos(me.yaw) * fwd - Math.sin(me.yaw) * side) * spd, -96, 96);
+    const dx = me.x - site.x, dz = me.z - site.z, dl = Math.hypot(dx, dz);
+    if (dl < LR) { me.x = site.x + dx / (dl || 1) * LR; me.z = site.z + dz / (dl || 1) * LR; }   // the lander is solid
+    const moved = Math.hypot(me.x - px, me.z - pz), floor = groundY(me.x, me.z) + 1.8;
+    if (me.ground && (keys.Space || keys.Jump)) { me.vy = 6; me.ground = false; } keys.Jump = false;
+    const vyBefore = me.vy; me.vy -= 14 * grav * dt; me.y += me.vy * dt;
+    if (me.y <= floor) { if (!me.ground && vyBefore < -3) emitDust(me.x, floor - 1.8, me.z, 6, 3, 1); me.y = floor; me.vy = 0; me.ground = true; }
+    const gnd = floor - 1.8, wet = (curSeaY > -900 && gnd < curSeaY) || (curLavaY > -900 && gnd < curLavaY + .4);
+    if (me.ground && moved > 0) {
+      props.stride += moved; props.phase += moved * 2.8;
+      if (props.stride > 1.1) { props.stride = 0; props.side *= -1; if (!wet) { stampPrint(me.x, me.z, me.yaw, props.side); emitDust(me.x, gnd, me.z, 1, 1.2, .6); } }
+    }
+    const bob = me.ground ? Math.sin(props.phase) * Math.min(.07, moved * 1.2) : 0;
+    if (!props.third) { camera.position.set(me.x, me.y + bob, me.z); astro.g.visible = false; }
+    else {
+      const cp = Math.cos(me.pitch); camera.position.set(me.x + Math.sin(me.yaw) * cp * 4.5, me.y - .3 - Math.sin(me.pitch) * 4.5, me.z + Math.cos(me.yaw) * cp * 4.5);
+      const cg = groundY(camera.position.x, camera.position.z) + .6; if (camera.position.y < cg) camera.position.y = cg;
+      astro.g.visible = true; astro.g.position.set(me.x, me.y - 1.8, me.z); astro.g.rotation.y = me.yaw;
+      const sw = me.ground ? Math.sin(props.phase) * Math.min(1, moved * 30) * .7 : .35;
+      astro.legL.rotation.x = sw; astro.legR.rotation.x = -sw; astro.armL.rotation.x = -sw * .8; astro.armR.rotation.x = sw * .8;
+    }
+    camera.rotation.set(me.pitch, me.yaw, 0);
+    if (curLavaY > -900 && gnd < curLavaY + .5) props.suit -= 30 * dt;
+    if (props.suit <= 0) { props.suit = 100; Object.assign(me, { x: site.x + 6.5, z: site.z, vy: 0 }); me.y = groundY(me.x, me.z) + 1.8; toast("⚠️ Suit breach! Emergency recall to the lander."); }
+    walk.oxygen = Math.max(0, walk.oxygen - .05 * dt);
+    if (walk.oxygen <= 0 && !props.recall) { props.recall = true; toast("Oxygen empty. Automatic recall to orbit."); startReturn(true); }
+    for (const sm of samples) if (!sm.taken) { sm.mesh.position.y = sm.base + Math.sin(clock.elapsedTime * 2 + sm.ph) * .12; sm.mesh.rotation.y += dt; }
+    dustFrame(dt, 9.8 * grav); atmosFrame(dt);
+    if ((sHud += dt) > .25) {
+      sHud = 0; let near = 1e9; for (const sm of samples) if (!sm.taken) near = Math.min(near, Math.hypot(sm.mesh.position.x - me.x, sm.mesh.position.z - me.z));
+      const dg = Math.hypot(ent.x - me.x, ent.z - me.z), dLad = Math.hypot(site.x + 3.9 - me.x, site.z - me.z);
+      const prompt = near < 3.6 ? "E: collect sample" : dLad < 3.4 ? "E: climb aboard the lander" : dg < 3.6 ? "E: enter the cave" : mission.flag ? "" : "F: plant flag";
+      $("hud").innerHTML = `🧭 ${lastSR.r.label} · 🌡️ ${Math.round(lastSR.r.temp - 273)} °C · ⬇ ${grav.toFixed(2)} g<br>🎒 Samples ${mission.samples}/${NSAMP} · 🚩 ${mission.flag ? "planted" : "not yet"} · 🕳️ Cave ${mission.cave ? "explored" : Math.round(dg) + " m " + arrowTo(ent.x, ent.z)}<br>🛰️ Lander ${Math.round(dl)} m ${arrowTo(site.x, site.z)} · 🫁 O₂ ${Math.round(walk.oxygen)}% · 🦺 Suit ${Math.round(props.suit)}%<br><small>${prompt}${prompt ? " · " : ""}WASD walk · Shift run · Space jump · V camera</small>`;
+    }
+  }
+  function collect(sm) {
+    sm.taken = true; sm.mesh.visible = false; mission.samples++; emitDust(sm.mesh.position.x, sm.base - .45, sm.mesh.position.z, 8, 2.5, 2);
+    const cls = lastSR.r.cls, [name, note] = SCI[cls] || SCI.rock, dens = (({ hab: 1.2, ice: .95, lava: 2.9, rock: 1.6 })[cls] || 1.5) * (1 + .12 * Math.log(lastSR.s.mass));
+    toast(`🧪 Sample ${mission.samples}/${NSAMP}: ${name}. Bulk density ${dens.toFixed(2)} g/cm³: ${note}.`, 6500); missionCheck();
+  }
+  function missionCheck() { if (!mission.done && mission.samples === NSAMP && mission.flag) { mission.done = true; toast("🏆 Mission complete! Climb back aboard the lander (E at the ladder) and launch.", 7000); say("Mission complete! Climb back aboard and launch."); } }
+
+  // ---- PHASE 3: caves ----
+  const CS = 160, CR = 14;
+  const cave = { g: new THREE.Group(), u: 0, lat: 0, len: 1, items: [], lights: [], cent: [], side: [], up: [], tan: [], rad: new Float32Array(CS + 1), art: null, deep: false, y0: 0, t: 0 };
+  cave.g.position.set(0, -600, 0); cave.g.visible = false; scene.add(cave.g);
+  const headlamp = new THREE.PointLight(0xffffff, 1.5, 18); cave.g.add(headlamp);
+  const cn = (x, y, z) => Math.sin(x * .9 + 1) * Math.cos(y * 1.1) + .5 * Math.sin(z * .8 + 2) + .5 * Math.sin((x + y + z) * .5);   // cheap smooth 3D noise (-2..2)
+  function buildCave(cls) {
+    cave.items.forEach(m => { cave.g.remove(m); if (m.geometry) m.geometry.dispose(); if (m.material) m.material.dispose(); }); cave.items.length = 0;
+    cave.lights.forEach(l => cave.g.remove(l)); cave.lights.length = 0; cave.cent = []; cave.side = []; cave.up = []; cave.tan = [];
+    const seed = Math.random() * 10, ctl = [];
+    for (let i = 0; i < 9; i++) ctl.push(new THREE.Vector3(i ? Math.sin(i * 1.1 + seed) * 7 : 0, -i * 1.6, -i * 14));   // winding, slowly descending path
+    const curve = new THREE.CatmullRomCurve3(ctl); cave.len = curve.getLength();
+    const pos = new Float32Array((CS + 1) * (CR + 1) * 3), col = new Float32Array(pos.length), idx = [], ring = [];
+    for (let j = 0; j <= CS; j++) {
+      const u = j / CS, c = curve.getPointAt(u), T = curve.getTangentAt(u), sd = new THREE.Vector3().crossVectors(T, UPV).normalize(), up = new THREE.Vector3().crossVectors(sd, T).normalize();
+      const rad = 3.2 + 4.3 * clamp((u - .84) / .11, 0, 1);                       // 3.2 m tunnel opening into a big chamber at the end
+      cave.cent.push(c); cave.side.push(sd); cave.up.push(up); cave.tan.push(T); cave.rad[j] = rad;
+      for (let k = 0; k <= CR; k++) {
+        const a = k / CR * Math.PI * 2, dx = Math.cos(a), dy = Math.sin(a), fl = Math.max(0, -dy), n = cn(c.x * .35 + dx * 2, c.y * .35 + dy * 2, c.z * .35 + u * 3) * .45;
+        const d = rad + n * (1 - .8 * fl) * 1.1, i3 = (j * (CR + 1) + k) * 3;       // wall bumps are smaller on the floor so it stays walkable
+        pos[i3] = c.x + (sd.x * dx + up.x * dy) * d; pos[i3 + 1] = c.y + (sd.y * dx + up.y * dy) * d; pos[i3 + 2] = c.z + (sd.z * dx + up.z * dy) * d;
+        let R, G, B;                                                                  // vertex colours by planet type
+        if (cls === "ice") { const b = Math.max(0, n); R = .45 + .3 * b; G = .75 + .2 * b; B = 1; }
+        else if (cls === "lava") { R = .14 + .05 * n; G = .1; B = .09; if (fl > .6) { R = .5; G = .16; B = .04; } if (n > .75) { R = .9; G = .3; B = .04; } }
+        else if (cls === "hab") { R = .6 + .1 * n; G = .55 + .1 * n; B = .45; if (fl > .5) { R = .2; G = .5; B = .22; } }
+        else { const g2 = .3 + .06 * n; R = g2; G = g2; B = g2 + .03; }
+        col[i3] = R; col[i3 + 1] = G; col[i3 + 2] = B; ring.push(j, k);
+      }
+    }
+    for (let j = 0; j < CS; j++) for (let k = 0; k < CR; k++) { const a = j * (CR + 1) + k, b = (j + 1) * (CR + 1) + k; idx.push(a, b, a + 1, b, b + 1, a + 1); }
+    const geo = new THREE.BufferGeometry(); geo.setAttribute("position", new THREE.BufferAttribute(pos, 3)); geo.setAttribute("color", new THREE.BufferAttribute(col, 3)); geo.setIndex(idx); geo.computeVertexNormals();
+    const tube = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: .9, side: THREE.DoubleSide, flatShading: cls === "ice" })); cave.g.add(tube); cave.items.push(tube);
+    // decorations: crystals / stalactites / spikes pointing inward from the wall
+    const dc = { ice: [0x7fe9ff, 0x1a8fb0], hab: [0xd8d2c0, 0x000000], lava: [0x2a1a14, 0x551000], rock: [0x555560, 0x000000] }[cls] || [0x555560, 0];
+    const deco = new THREE.InstancedMesh(new THREE.ConeGeometry(1, 1, 5), new THREE.MeshStandardMaterial({ color: dc[0], emissive: dc[1], roughness: .5 }), 170);
+    for (let i = 0; i < 170; i++) {
+      const j = 6 + Math.floor(Math.random() * (CS - 8)), k = Math.floor(Math.random() * CR), i3 = (j * (CR + 1) + k) * 3, h = .8 + Math.random() * 2.2, w = .18 + Math.random() * .3;
+      cA.set(pos[i3], pos[i3 + 1], pos[i3 + 2]); cB.copy(cave.cent[j]).sub(cA).normalize();                       // inward direction
+      dmy.position.copy(cA).addScaledVector(cB, h * .5); dmy.quaternion.setFromUnitVectors(UPV, cB); dmy.scale.set(w, h, w); dmy.updateMatrix(); deco.setMatrixAt(i, dmy.matrix);
+    }
+    dmy.quaternion.set(0, 0, 0, 1); cave.g.add(deco); cave.items.push(deco);
+    const lc = { ice: 0x66d8ff, hab: 0x66ffaa, lava: 0xff6a20, rock: 0x8899ff }[cls] || 0x8899ff;
+    for (const u of [.2, .4, .6, .8]) { const l = new THREE.PointLight(lc, cls === "rock" ? .3 : 1.3, 22); l.position.copy(curve.getPointAt(u)); cave.g.add(l); cave.lights.push(l); }
+    if (cls === "lava") {                                                          // glowing lava stream along the floor
+      const pts = []; for (let j = 0; j <= CS; j += 4) pts.push(cave.cent[j].clone().addScaledVector(cave.up[j], -cave.rad[j] + .3));
+      const st = new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), 120, .5, 6), new THREE.MeshBasicMaterial({ color: 0xff5a10 })); cave.g.add(st); cave.items.push(st);
+    }
+    const end = cave.cent[CS], art = new THREE.Mesh(new THREE.IcosahedronGeometry(1.1, 1), new THREE.MeshStandardMaterial({ color: lc, emissive: lc, emissiveIntensity: .9, roughness: .2 }));
+    art.position.copy(end).addScaledVector(cave.up[CS], -cave.rad[CS] + 1.8); cave.g.add(art); cave.items.push(art); cave.art = art; cave.deep = false; cave.y0 = cave.cent[0].y;
+  }
+  function caveLog() {
+    const r = lastSR.r, T = Math.round(r.temp - 273) + ({ lava: 40, ice: -15, hab: -8, rock: -10 }[r.cls] || 0);
+    const kind = { hab: "limestone cave with damp, mossy floors", ice: "glacier cave with glowing ice crystals", lava: "lava tube with a glowing stream of magma", rock: "dry, dark rock tunnel" }[r.cls] || "tunnel";
+    return `>> SUBSURFACE LOG // ENTRY\n>> A ${kind}.\n>> Temperature underground: ${T} °C.\n>> The tunnel winds ~${Math.round(cave.len)} m and slopes downward. A chamber waits at the far end.\n>> Headlamp ON. Mind your oxygen.\n\n[GOAL] Reach the deep chamber and collect the glowing geode (E).\n>> END OF ENTRY`;
+  }
+  function enterCave() {
+    if (flight.phase !== "surface") return;
+    flight.phase = "flash"; $("flash").style.opacity = 1;
+    setTimeout(() => {
+      buildCave(lastSR.r.cls); surface.visible = false; cave.g.visible = true; starPts.visible = false; ambient.intensity = .12; astro.g.visible = false;
+      scene.background.setHex(0x000000); if (!scene.fog) scene.fog = new THREE.FogExp2(0, .045); scene.fog.color.setHex(0); scene.fog.density = .045;
+      cave.u = .01; cave.lat = 0; me.yaw = 0; me.pitch = 0; flight.phase = "cave"; $("flash").style.opacity = 0; typeLog(caveLog());
+      toast("Cave entered. W/S walk along the tunnel, A/D sidestep, drag to look around. E near the entrance exits.", 6500); say("Entering the cave. Your headlamp is on.");
+    }, 380);
+  }
+  function exitCave() {
+    if (flight.phase !== "cave") return;
+    flight.phase = "flash"; $("flash").style.opacity = 1;
+    setTimeout(() => {
+      cave.g.visible = false; ambient.intensity = .5; surface.visible = true; buildSurface();                      // rebuild restores sky, fog and lights
+      const a = Math.atan2(site.x - ent.x, site.z - ent.z); me.x = ent.x + Math.sin(a) * 3.5; me.z = ent.z + Math.cos(a) * 3.5; me.y = groundY(me.x, me.z) + 1.8; me.vy = 0; me.ground = true; me.yaw = Math.atan2(-Math.sin(a), -Math.cos(a)); me.pitch = -.05;
+      flight.phase = "surface"; $("flash").style.opacity = 0; typeLog(xenoLog(lastSR.s, lastSR.r)); toast("Back on the surface.");
+    }, 380);
+  }
+  function caveFrame(dt) {
+    dt = Math.min(dt, .05); cave.t += dt;
+    const fwd = (keys.KeyW || keys.Walk ? 1 : 0) - (keys.KeyS ? 1 : 0) + (keys.ArrowUp ? 1 : 0) - (keys.ArrowDown ? 1 : 0), side = (keys.KeyD ? 1 : 0) - (keys.KeyA ? 1 : 0);
+    me.yaw += ((keys.ArrowLeft ? 1 : 0) - (keys.ArrowRight ? 1 : 0)) * 1.6 * dt;
+    const j = Math.min(CS - 1, Math.floor(cave.u * CS)), fr = cave.u * CS - j, T = cave.tan[j], cp = Math.cos(me.pitch);
+    const dir = (-Math.sin(me.yaw) * cp * T.x + Math.sin(me.pitch) * T.y - Math.cos(me.yaw) * cp * T.z) >= 0 ? 1 : -1;   // am I looking along the tunnel or back out of it?
+    const sp = keys.ShiftLeft ? 7 : 3.5, rad = lerp(cave.rad[j], cave.rad[j + 1], fr);
+    cave.u = clamp(cave.u + fwd * dir * sp * dt / cave.len, 0, 1); cave.lat = clamp(cave.lat + side * dir * sp * dt, -rad * .45, rad * .45);
+    cA.copy(cave.cent[j]).lerp(cave.cent[j + 1], fr); cB.copy(cave.side[j]); cC.copy(cave.up[j]);
+    cA.addScaledVector(cB, cave.lat).addScaledVector(cC, 1.7 - rad + Math.sin(cave.t * 8) * .03 * Math.abs(fwd));            // eye = centre + side*lat + up*(1.7 - radius)
+    camera.position.copy(cA).add(cave.g.position); camera.rotation.set(me.pitch, me.yaw, 0);
+    headlamp.position.copy(cA).addScaledVector(cC, .3);
+    cave.lights.forEach((l, i) => { if (lastSR.r.cls === "lava") l.intensity = 1.3 + .35 * Math.sin(cave.t * 3 + i); });
+    cave.art.rotation.y += dt; cave.art.position.y += Math.sin(cave.t * 2) * .004;
+    const depth = Math.round(cave.y0 - cA.y), dArt = cA.distanceTo(cave.art.position), near = cave.u < .045, pr = near ? "E: exit to the surface" : (!cave.deep && dArt < 4.5) ? "E: collect the geode" : "";
+    walk.oxygen = Math.max(0, walk.oxygen - .05 * dt); if (walk.oxygen <= 0) { exitCave(); }
+    if ((sHud += dt) > .25) { sHud = 0; $("hud").innerHTML = `🕳️ CAVE · depth ${depth} m · ${Math.round(cave.u * 100)}% of the way<br>🌡️ ${Math.round(lastSR.r.temp - 273) + ({ lava: 40, ice: -15, hab: -8, rock: -10 }[lastSR.r.cls] || 0)} °C · 💡 headlamp · 🫁 O₂ ${Math.round(walk.oxygen)}%<br><small>${pr}${pr ? " · " : ""}W/S along the tunnel · A/D sidestep · drag to look</small>`; }
+  }
+
+  // ---- keys for exploring, cabin and caves ----
+  addEventListener("keydown", e => {
+    if (/INPUT|SELECT|TEXTAREA/.test(e.target.tagName) || e.repeat) return;
+    const ph = flight.phase;
+    if (ph === "descent" && e.code === "KeyC") cab.ext = !cab.ext;
+    if (ph === "cabin" && e.code === "KeyE" && !props.boarded && cab.x > 1.6 && Math.abs(cab.z) < 1.4) {
+      if (cab.airlock < 0) { cab.airlock = 0; toast("AIRLOCK CYCLE: depressurising the cabin…", 3500); say("Airlock cycle started."); }
+      else if (cab.door > .9) startLadder(1);
+    }
+    if (ph === "cave" && e.code === "KeyE") {
+      if (cave.u < .045) exitCave();
+      else if (!cave.deep && cameraNearArt()) { cave.deep = true; cave.art.visible = false; mission.cave = true; toast(`🧪 Geode collected! ${CAVESCI[lastSR.r.cls] || CAVESCI.rock}`, 9000); say("Geode collected. " + (CAVESCI[lastSR.r.cls] || CAVESCI.rock)); }
+    }
+    if (ph !== "surface") return;
+    if (e.code === "KeyV") props.third = !props.third;
+    if (e.code === "KeyE") {
+      let b = null, bd = 3.6; for (const sm of samples) if (!sm.taken) { const d = Math.hypot(sm.mesh.position.x - me.x, sm.mesh.position.z - me.z); if (d < bd) { bd = d; b = sm; } }
+      if (b) collect(b);
+      else if (Math.hypot(site.x + 3.9 - me.x, site.z - me.z) < 3.4) { props.third = false; startLadder(-1); }
+      else if (Math.hypot(ent.x - me.x, ent.z - me.z) < 3.6) enterCave();
+      else toast("Nothing in reach. Look for glowing crystals, the ladder or the cave mouth.");
+    }
+    if (e.code === "KeyF" && !mission.flag) {
+      const fx = me.x - Math.sin(me.yaw) * 1.5, fz = me.z - Math.cos(me.yaw) * 1.5, fy = groundY(fx, fz);
+      if ((curSeaY > -900 && fy < curSeaY) || (curLavaY > -900 && fy < curLavaY + .5)) { toast("You can't plant a flag in liquid."); return; }
+      flag.position.set(fx, fy, fz); flag.rotation.y = me.yaw; flag.visible = true; mission.flag = true; emitDust(fx, fy, fz, 8, 2, 1.5);
+      toast(`🚩 Flag planted! The first footsteps on this ${lastSR.r.label.toLowerCase()}.`); missionCheck();
+    }
+  });
+  const cameraNearArt = () => camera.position.distanceTo(cave.art.position.clone().add(cave.g.position)) < 4.5;
+
+  // ---- the ship cockpit (a 3D dashboard attached to the camera) for flying through space ----
+  const ship = { on: false };
+  const cockpit = (() => {
+    const g = new THREE.Group(), dark = new THREE.MeshStandardMaterial({ color: 0x151a26, roughness: .7, metalness: .3 }), trim = new THREE.MeshStandardMaterial({ color: 0x2c3550, roughness: .5, metalness: .6 });
+    const add = (geo, mat, x, y, z, rx, ry, rz) => { const m = new THREE.Mesh(geo, mat); m.position.set(x, y, z); m.rotation.set(rx || 0, ry || 0, rz || 0); g.add(m); return m; };
+    add(new THREE.BoxGeometry(3.4, .5, 1.1), dark, 0, -.98, -1.5, .35);                           // dashboard, top tilted toward the pilot
+    add(new THREE.BoxGeometry(3.8, .5, .6), trim, 0, -1.3, -1.3, .1);
+    for (const sg of [-1, 1]) { add(new THREE.BoxGeometry(.14, 2.6, .14), trim, sg * 1.32, .1, -1.6, 0, 0, -sg * .22); add(new THREE.BoxGeometry(.9, 1.6, 1.3), dark, sg * 1.85, -.5, -.9, 0, -sg * .45, 0); }   // window pillars, side consoles
+    add(new THREE.BoxGeometry(3.0, .14, .14), trim, 0, .95, -1.6);                                // top bar of the window
+    const scr = [-.95, 0, .95].map(x => { const m = makeScreen(.8, .4); m.position.set(x, -.72, -1.28); m.rotation.x = -(Math.PI / 2 - .35); g.add(m); return m; });
+    const lamp = new THREE.PointLight(0x9fd8ff, .9, 6); lamp.position.set(0, .3, -.4); g.add(lamp);
+    g.visible = false; scene.add(camera); camera.add(g); return { g, scr };                       // children of the camera move and turn with it
+  })();
+  function setShip(on) {
+    if (on === ship.on) return; ship.on = on; cockpit.g.visible = on; document.body.classList.toggle("ship", on);
+    $("shipBtn").textContent = on ? "👨‍🚀 LEAVE SHIP (back to spacewalk)" : "🚀 BOARD SHIP (cockpit view)";
+    if (on) say("Boarding the ship. Bigger engines and a longer-lasting fuel supply.");
+  }
+  function shipScreens(speed, t, d, closing) {
+    const [a, b, c] = cockpit.scr;
+    a.userData.write(["VELOCITY", (speed * KMS_PER_UNIT).toFixed(0) + " km/s", "FUEL " + Math.round(walk.fuel) + "%"]);
+    b.userData.write([t.name.toUpperCase(), (d / UNITS_PER_AU).toFixed(2) + " AU", (closing >= 0 ? "CLOSING " : "RECEDING ") + Math.abs(closing).toFixed(2)]);
+    c.userData.write(["O2 " + Math.round(walk.oxygen) + "%", "DOCK " + (walk.dock >= 0 ? PLANETS[walk.dock].n : "none"), "B: LEAVE SHIP"]);
+  }
+  hooks.landDebug = () => ({ phase: flight.phase, h: +dsc.h.toFixed(1), landed: dsc.landed, mission: { ...mission }, cab: { x: +cab.x.toFixed(2), z: +cab.z.toFixed(2), airlock: +cab.airlock.toFixed(2), door: +cab.door.toFixed(2) }, boarded: props.boarded, site: { ...site }, ent: { ...ent }, me: { x: +me.x.toFixed(2), z: +me.z.toFixed(2) }, s0: samples[0].mesh.position.toArray(), cu: +cave.u.toFixed(3), deep: cave.deep, ship: ship.on, cockpitVisible: cockpit.g.visible });
+  hooks.landTP = (x, z) => { me.x = x; me.z = z; me.y = groundY(x, z) + 1.8; };
+  hooks.cabTP = (x, z) => { cab.x = x; cab.z = z; };
+  hooks.caveU = u => { cave.u = u; };
+
+  /* =====================================================================
      FIRST-PERSON ASTRONAUT SPACE WALK
      ---------------------------------------------------------------------
      Scale: 1 AU = 5 scene units (the same as the Lab). In walk mode the planets move to their REAL distances
@@ -1588,7 +2047,7 @@ function init3D() {
   function walkUI(on) {
     isSpaceWalk = on; document.body.classList.toggle("spacewalk", on); $("vitalsCard").hidden = !on;
     $("deployBtn").textContent = on ? "🛬 RETURN TO CONSOLE" : "👨‍🚀 DEPLOY ASTRONAUT SPACE WALK";
-    if (!on && document.exitPointerLock) document.exitPointerLock();
+    if (!on) { setShip(false); if (document.exitPointerLock) document.exitPointerLock(); }
   }
   function startWalk() {
     if (flight.phase !== "orbit") { say("Return to the orbit view first, then deploy the astronaut.", true); return; }
@@ -1634,12 +2093,12 @@ function init3D() {
     const vert = (keys.Space || keys.Jump ? 1 : 0) - (keys.ShiftLeft || keys.ShiftRight ? 1 : 0); keys.Jump = false;
     acc.set(0, 0, 0).addScaledVector(F, fwd).addScaledVector(Rt, side).addScaledVector(UPV, vert);      // a = fwd*f + side*r + vert*u
     if (acc.lengthSq() > 0 && walk.fuel > 0) {
-      acc.normalize().multiplyScalar(THRUST); walk.vel.addScaledVector(acc, dt);       // v <- v + a dt
-      walk.fuel = Math.max(0, walk.fuel - .6 * dt);                                    // thrusting burns 0.6% fuel per second
+      acc.normalize().multiplyScalar(THRUST * (ship.on ? 2.2 : 1)); walk.vel.addScaledVector(acc, dt);   // the ship has bigger engines       // v <- v + a dt
+      walk.fuel = Math.max(0, walk.fuel - (ship.on ? .25 : .6) * dt);                                    // thrusting burns 0.6% fuel per second
     }
     if (keys.KeyX && walk.fuel > 0 && walk.vel.lengthSq() > .01) { walk.vel.multiplyScalar(Math.exp(-3 * dt)); walk.fuel = Math.max(0, walk.fuel - .3 * dt); }   // retro-thrusters
     walk.vel.multiplyScalar(Math.exp(-DRAG * dt));                                     // gentle deep-space damping: v <- v e^(-k dt)
-    const sp = walk.vel.length(); if (sp > VMAX) walk.vel.multiplyScalar(VMAX / sp);   // speed limit
+    const sp = walk.vel.length(), vmax = ship.on ? 2 * VMAX : VMAX; if (sp > vmax) walk.vel.multiplyScalar(vmax / sp);   // speed limit
     camera.position.addScaledVector(walk.vel, dt);                                     // p <- p + v dt
     if (camera.position.length() > 380) { camera.position.setLength(380); walk.vel.multiplyScalar(0); }   // stay inside the star sphere
     walk.oxygen = Math.max(0, walk.oxygen - .08 * dt);
@@ -1677,6 +2136,7 @@ function init3D() {
       $("vO2").textContent = Math.round(walk.oxygen); $("vO2bar").style.width = walk.oxygen + "%";
       $("vFuel").textContent = Math.round(walk.fuel); $("vFuelbar").style.width = walk.fuel + "%";
       $("vSpeed").textContent = (speed * KMS_PER_UNIT).toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+      if (ship.on) shipScreens(speed, t, d, closing);                                  // cockpit instruments
       if (walk.oxygen <= 0) { say("Suit oxygen depleted. Returning you to the console."); endWalk(); }
     }
   }
@@ -1684,6 +2144,7 @@ function init3D() {
   // Input bindings (added once; each handler returns immediately when the walk is not active, so they cost nothing otherwise)
   addEventListener("keydown", e => {
     if (flight.phase !== "walk" || e.repeat || /INPUT|SELECT|TEXTAREA/.test(e.target.tagName)) return;
+    if (e.code === "KeyB") setShip(!ship.on);
     if (e.code === "KeyE" && walk.dock >= 0) dockAndLand(walk.dock);
     const m = /^Digit(\d)$/.exec(e.code);                                              // quick-warp: 1..9 = Mercury..Neptune order, 0 = Pluto
     if (m && walk.fuel >= 5) {
@@ -1705,6 +2166,7 @@ function init3D() {
   addEventListener("pointerup", () => wDrag = null);
   addEventListener("pointermove", e => { if (!wDrag) return; walk.yaw -= (e.clientX - wDrag[0]) * .005; walk.pitch = clamp(walk.pitch - (e.clientY - wDrag[1]) * .005, -1.5, 1.5); wDrag = [e.clientX, e.clientY]; });
   $("deployBtn").onclick = () => isSpaceWalk ? endWalk() : startWalk();
+  $("shipBtn").onclick = () => setShip(!ship.on);
   hooks.walkDebug = () => ({ p: camera.position.toArray().map(v => +v.toFixed(2)), v: walk.vel.toArray().map(v => +v.toFixed(2)), dock: walk.dock, fuel: +walk.fuel.toFixed(1), phase: flight.phase });
 
   /* --- resize --- */
