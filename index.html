@@ -269,6 +269,60 @@
 const nova = { on: true, ready: false, moved: false, t: 0, t2: 0, lastCls: null, voice: null };
 let isSurfaceMode = false, isSpaceWalk = false, lastSR = null, weather = null, brain = null;   // isSpaceWalk: first-person astronaut mode is on   // weather = the synced Earth city (or null)   // global view-mode flag + the latest {sliders, ML result} for the surface engine
 
+/* ---------- REAL PLANET PROFILES (approximate NASA figures) ----------
+   g = surface gravity in m/s^2, T = typical temperature at the landing spot in kelvin, au = distance from the Sun.
+   style picks the terrain generator; env = sky/fog/light settings; hz = suit damage per second (extreme worlds).
+   Giant planets have no surface: they get an atmospheric probe dive (H = scale height in km, T1 = temperature at 1 bar,
+   Pc = pressure in bar at which the probe is crushed, wind in m/s). */
+const PROFILES = {
+  Mercury: { name: "Mercury", type: "rock", cls: "rock", style: "mercury", au: .387, g: 3.70, T: 700, relief: 6, spinH: 1407.6, tilt: .0005, hz: .12, dens: 3.0, rockCol: 0x6e6a66, caveCls: "rock",
+    atm: "Practically none: an exosphere of sodium, oxygen and helium so thin that atoms almost never collide.", press: "under a trillionth of Earth's",
+    day: "One Mercury day (sunrise to sunrise) lasts 176 Earth days, longer than its 88-day year.", sky: "Black sky at noon, with stars all day and a blinding Sun about 2.5 times wider than from Earth.",
+    ground: "Dark grey, crater-covered dust. Bright ray streaks spray out from fresh craters.", hazard: "Sunlit ground is about 430 °C, hot enough to melt lead, while the night side drops to −180 °C. Your suit slowly overheats.",
+    sample: ["Mercurian basalt", "dark volcanic rock containing sulphur, formed when lava flooded ancient craters"], cave: "Craters near Mercury's poles never see sunlight and stay cold enough to hold water ice, even though this is the planet closest to the Sun.",
+    env: { sky: [0, 0, 0], fog: .0003, stars: true, hemi: [.45, .45, .5], hemiI: .22 } },
+  Venus: { name: "Venus", type: "rock", cls: "rock", style: "venus", au: .723, g: 8.87, T: 737, relief: 4, spinH: -5832, tilt: 3.096, hz: .8, dens: 2.9, rockCol: 0x3a3026, caveCls: "lava",
+    atm: "96% carbon dioxide, with clouds of sulfuric acid high above.", press: "92 bar, like being 900 m deep in Earth's ocean",
+    day: "A Venus day (sunrise to sunrise) lasts 117 Earth days. It spins backwards, once every 243 days.", sky: "A dim orange-yellow haze. The thick clouds let through only about 2% of sunlight.",
+    ground: "Dark basalt plains, pancake-shaped volcanic domes and lava channels, all tinted orange by the haze.", hazard: "464 °C and 92 bar: hot enough to melt lead and crush a submarine. The Soviet Venera 13 lander survived about 2 hours; your suit gets about 2 minutes.",
+    sample: ["Venusian basalt", "volcanic rock like Earth's ocean floor, baked by 464 °C air"], cave: "Radar shows lava channels and collapsed tubes on Venus, but the surface is far too hot for anyone to explore them yet.",
+    env: { sky: [.75, .5, .2], fog: .03, stars: false, hemi: [.8, .55, .3], hemiI: .75 } },
+  Earth: { name: "Earth", type: "rock", cls: "hab", style: "earth", au: 1, g: 9.81, T: 288, relief: 7, spinH: 24, tilt: .409, hz: 0, dens: 1.3, caveCls: "hab",
+    atm: "78% nitrogen and 21% oxygen.", press: "1 bar", day: "24 hours.", sky: "Blue, because air scatters blue light the most.", ground: "Oceans cover 71% of the surface. The rest is rock, soil and plants.", hazard: "None. This is home.",
+    sample: ["Sandstone with ripple marks", "evidence that liquid water once flowed here"], cave: "Limestone caves form when slightly acidic rain dissolves rock over hundreds of thousands of years." },
+  Mars: { name: "Mars", type: "rock", cls: "rock", style: "mars", au: 1.524, g: 3.71, T: 210, relief: 9, spinH: 24.62, tilt: .44, hz: 0, dens: 1.5, rockCol: 0x6a3a28, caveCls: "rock",
+    atm: "95% carbon dioxide.", press: "0.006 bar, under 1% of Earth's", day: "A Mars day (a sol) is 24 hours 37 minutes.", sky: "Butterscotch, because fine iron-rich dust hangs in the air. Mars sunsets are blue.",
+    ground: "Rust-red dunes and rocks, coloured by iron oxide. Olympus Mons, about 22 km high, is the tallest volcano known.", hazard: "The thin air gives no protection: radiation, and cold averaging −63 °C and falling to −125 °C.",
+    sample: ["Hematite spherules ('blueberries')", "small iron-rich balls that on Earth form in water, a sign that Mars was once wet"], cave: "Mars has giant lava tubes. With only 38% of Earth's gravity their roofs can span hundreds of metres, and future crews may shelter in them.",
+    env: { sky: [.74, .54, .38], fog: .012, stars: false, hemi: [.8, .6, .45], hemiI: .7 } },
+  Ceres: { name: "Ceres", type: "rock", cls: "rock", style: "ceres", au: 2.77, g: .28, T: 168, relief: 7, spinH: 9.07, tilt: .07, hz: 0, dens: 1.6, rockCol: 0x777575, caveCls: "rock",
+    atm: "None.", press: "essentially zero", day: "9 hours 4 minutes.", sky: "Black with stars. The Sun looks about a third as wide as from Earth.",
+    ground: "Dark, crumbly crust covered in craters. In Occator crater, bright patches of salt (sodium carbonate) glitter.", hazard: "Extreme cold (−105 °C) and no air. Gravity is so weak that a jump takes you tens of metres up.",
+    sample: ["Carbonate salt crust", "bright sodium carbonate left behind when salty water leaked out and dried"], cave: "Ceres' crust is rich in water ice and salts, so underground brine pockets may still exist.",
+    env: { sky: [0, 0, 0], fog: .0003, stars: true, hemi: [.4, .4, .45], hemiI: .18 } },
+  Pluto: { name: "Pluto", type: "rock", cls: "rock", style: "pluto", au: 39.5, g: .62, T: 44, relief: 8, spinH: -153.3, tilt: 2.139, hz: .03, dens: .9, rockCol: 0xe9ddd0, caveCls: "ice",
+    atm: "A thin haze of nitrogen with a little methane.", press: "about 1 pascal, a hundred-thousandth of Earth's", day: "6.4 Earth days. Pluto spins backwards.",
+    sky: "Almost black with a thin blue haze near the horizon. The Sun is a tiny, very bright dot, with about 1/1500 of Earth's sunlight.",
+    ground: "Smooth plains of frozen nitrogen with polygon-shaped cells, red-brown 'tholin' stains and mountains of water ice as hard as rock.", hazard: "−229 °C. Nitrogen ice flows like glaciers, and water ice is as hard as rock.",
+    sample: ["Nitrogen-methane ice with red tholin", "frozen nitrogen stained by tholins: sunlight turns methane into red-brown molecules"], cave: "Pits and flowing ice seen by New Horizons hint at layers underground. A deep ocean may lie far below.",
+    env: { sky: [.01, .02, .05], fogCol: [.08, .15, .3], fog: .004, stars: true, hemi: [.5, .55, .7], hemiI: .3 } },
+  Jupiter: { name: "Jupiter", type: "giant", au: 5.2, g: 24.79, spinH: 9.93, tilt: .055, H: 27, T1: 165, Pc: 23, wind: 140, top: [.85, .7, .5], bot: [.3, .15, .07],
+    layers: [[.1, "high haze"], [.5, "ammonia-ice clouds"], [1.5, "ammonium-hydrosulfide clouds"], [5, "water clouds with lightning"]], note: "In 1995 NASA's Galileo probe fell into Jupiter and sent data for about an hour before the pressure ended its signal." },
+  Saturn: { name: "Saturn", type: "giant", au: 9.54, g: 10.44, spinH: 10.7, tilt: .466, H: 60, T1: 134, Pc: 20, wind: 350, top: [.9, .8, .55], bot: [.4, .3, .15],
+    layers: [[.1, "haze"], [.5, "ammonia-ice clouds"], [1.5, "ammonium-hydrosulfide clouds"], [5, "water clouds"]], note: "No probe has ever dived into Saturn. Cassini ended its mission in 2017 by plunging into the atmosphere and burning up." },
+  Uranus: { name: "Uranus", type: "giant", au: 19.2, g: 8.69, spinH: -17.24, tilt: 1.706, H: 28, T1: 76, Pc: 25, wind: 150, top: [.55, .85, .9], bot: [.08, .28, .38],
+    layers: [[.1, "hydrocarbon haze"], [1.2, "methane-ice clouds"], [3, "hydrogen-sulfide clouds"]], note: "No spacecraft has ever entered Uranus. Voyager 2 flew past in 1986. The planet rolls around the Sun on its side." },
+  Neptune: { name: "Neptune", type: "giant", au: 30.1, g: 11.15, spinH: 16.11, tilt: .494, H: 20, T1: 72, Pc: 25, wind: 450, top: [.25, .45, .9], bot: [.03, .07, .3],
+    layers: [[.1, "haze"], [1, "methane-ice clouds"], [3, "hydrogen-sulfide clouds"]], note: "No spacecraft has ever entered Neptune. Voyager 2 flew past in 1989 and measured the fastest winds in the Solar System." }
+};
+let activeProfile = null;                                   // the real planet you are standing on (null = a made-up exoplanet from the sliders)
+function profileLog(p) {                                     // the field log for a real world, written from its real numbers
+  const grav = p.g / 9.81, kg = Math.round(80 * grav), C = Math.round(p.T - 273);
+  const gtxt = grav < .1 ? `Each step is a slow-motion leap. My 80 kg reads ${kg} kg and a jump carries me tens of metres.` : grav < .5 ? `Light and bouncy: my 80 kg reads ${kg} kg and jumps are long and slow.`
+    : grav < 1.2 ? `Close to home weight: my 80 kg reads ${kg} kg.` : `My 80 kg presses down like ${kg} kg. Every step is work.`;
+  return `>> ${p.name.toUpperCase()} // FIELD LOG (real planetary data)\n>> ${p.au} AU from the Sun | about ${C} °C here | gravity ${p.g} m/s² (${grav.toFixed(2)} g)\n\n[01] GRAVITY\n${gtxt}\n\n[02] ATMOSPHERE\n${p.atm} Pressure: ${p.press}.\n\n[03] SKY\n${p.sky}\n\n[04] GROUND\n${p.ground}\n\n[05] DAY\n${p.day}\n\n[06] HAZARDS\n${p.hazard}\n\n>> END OF LOG`;
+}
+
 /* ---------- 1. PHYSICS + DECISION TREE ---------- */
 const HZ_INNER = 0.8, HZ_OUTER = 1.5;       // Goldilocks zone edges in AU (also drawn as the green ring)
 
@@ -449,6 +503,7 @@ refreshMissionMenu();
    No server needed. The journal is assembled from templates, but every number and every choice of wording
    comes from the sliders and the ML result, so each planet gets its own log. */
 function xenoLog(s, r) {
+  if (activeProfile && activeProfile.type !== "giant") return profileLog(activeProfile);   // real planets get a real log
   const m = s.mass, d = s.distance, g = s.ghg, T = Math.round(r.temp), cls = r.cls;
   const grav = Math.pow(m, .46);                    // surface gravity in Earth g (g = M / R^2, with radius ~ M^0.27)
   const flux = 1 / (d * d);                         // starlight compared with Earth
@@ -597,6 +652,7 @@ function update() {                           // runs on EVERY slider move and p
   nova.lastCls = r.cls;
   checkMission(s, r);
   lastSR = { s, r };
+  if (isSurfaceMode && activeProfile && hooks.profileNote) hooks.profileNote();
   if (brain) brain.fire(s, r);                      // every slider move, preset, mission or weather sync sends a pulse through the network
   if (isSurfaceMode) { hooks.markSurface && hooks.markSurface(); scheduleLog(); }   // sliders also reshape the landscape
 }
@@ -1177,18 +1233,48 @@ function init3D() {
   }
 
   /* --- Solar System group: 8 planets + orbit lines, hidden until the Planets tab is opened --- */
+  // ---- procedural planet surfaces: each world is painted on a small canvas (no image files needed) ----
+  function planetTex(name) {
+    const cv = document.createElement("canvas"); cv.width = 256; cv.height = 128; const c = cv.getContext("2d"), W = 256, H = 128, rnd = Math.random;
+    const fill = col => { c.fillStyle = col; c.fillRect(0, 0, W, H); };
+    const blob = (rgb, n, r0, r1, a) => { for (let i = 0; i < n; i++) { c.fillStyle = `rgba(${rgb},${(a * (.4 + rnd() * .6)).toFixed(2)})`; c.beginPath(); c.arc(rnd() * W, rnd() * H, r0 + rnd() * (r1 - r0), 0, 6.3); c.fill(); } };
+    const bands = list => { let y = 0; list.forEach(([h, col]) => { c.fillStyle = col; c.fillRect(0, y * H, W, h * H + 1); y += h; }); };
+    const spot = (x, y, rx, ry, col) => { c.fillStyle = col; c.beginPath(); c.ellipse(x * W, y * H, rx, ry, 0, 0, 6.3); c.fill(); };
+    if (name === "Earth") { fill("#1d5fb4"); blob("70,140,70", 45, 6, 22, .9); blob("150,120,70", 15, 4, 12, .8); c.fillStyle = "#f4f8ff"; c.fillRect(0, 0, W, 7); c.fillRect(0, H - 7, W, 7); blob("255,255,255", 60, 5, 18, .35); }
+    else if (name === "Mars") { fill("#b5562f"); blob("70,35,25", 40, 4, 20, .5); blob("220,150,100", 20, 6, 18, .4); c.fillStyle = "#f2f2f2"; c.fillRect(0, 0, W, 5); c.fillRect(0, H - 5, W, 5); }
+    else if (name === "Mercury") { fill("#8b8680"); blob("40,38,36", 120, 1, 6, .6); blob("200,195,185", 80, 1, 5, .5); }
+    else if (name === "Ceres") { fill("#6b6a6a"); blob("35,35,35", 90, 1, 5, .55); blob("160,160,160", 50, 1, 4, .4); blob("255,255,255", 6, 1, 2, .9); }
+    else if (name === "Venus") { fill("#d9b66a"); blob("255,240,190", 70, 6, 24, .4); blob("170,120,50", 50, 5, 20, .3); }
+    else if (name === "Jupiter") { bands([[.08, "#c9a77c"], [.07, "#a9744a"], [.08, "#e5d3b3"], [.06, "#b07a52"], [.1, "#ddc6a0"], [.08, "#8f5a3a"], [.1, "#e8d9bd"], [.07, "#b8855b"], [.08, "#d4b890"], [.07, "#9a6540"], [.11, "#e0cba6"], [.1, "#cdb08a"]]); spot(.62, .62, 16, 9, "#b5482b"); blob("255,255,255", 20, 1, 4, .5); }
+    else if (name === "Saturn") bands([[.12, "#d9c58f"], [.1, "#c9b27a"], [.12, "#e6d7a8"], [.1, "#cbb582"], [.14, "#dfcd9c"], [.1, "#c3ac78"], [.12, "#e3d3a3"], [.1, "#cdb98a"], [.1, "#d8c692"]]);
+    else if (name === "Uranus") { fill("#8fdce2"); blob("255,255,255", 10, 10, 25, .1); }
+    else if (name === "Neptune") { fill("#2f56d8"); blob("120,170,255", 30, 8, 24, .25); blob("255,255,255", 14, 1, 5, .6); spot(.3, .55, 14, 8, "#14246b"); }
+    else { fill("#b99b86"); blob("110,50,35", 40, 5, 20, .5); c.fillStyle = "#f0e4d6"; c.beginPath(); c.arc(W * .42, H * .46, 12, 0, 6.3); c.fill(); c.beginPath(); c.arc(W * .52, H * .46, 12, 0, 6.3); c.fill(); c.beginPath(); c.moveTo(W * .37, H * .52); c.lineTo(W * .57, H * .52); c.lineTo(W * .47, H * .73); c.fill(); }   // Pluto with its bright heart-shaped plain
+    return new THREE.CanvasTexture(cv);
+  }
+  function ringTex() {                                       // Saturn's rings seen edge to edge: bands of different brightness and a dark gap
+    const cv = document.createElement("canvas"); cv.width = 256; cv.height = 4; const c = cv.getContext("2d");
+    for (let x = 0; x < 256; x++) { const gap = x > 150 && x < 160, a = gap ? .03 : .55 + .35 * Math.sin(x * .35) * Math.sin(x * .09); c.fillStyle = `rgba(215,195,150,${Math.max(.05, a).toFixed(2)})`; c.fillRect(x, 0, 1, 4); }
+    return new THREE.CanvasTexture(cv);
+  }
+
   const solar = new THREE.Group(); solar.visible = false; scene.add(solar);
   const sol = PLANETS.map((p, i) => {
     const rad = 5 + i * 3.2;                                         // orbit radius in scene units (NOT to scale)
-    const mesh = new THREE.Mesh(new THREE.SphereGeometry(p.r, 32, 32), new THREE.MeshStandardMaterial({ color: p.c, roughness: .8 }));
+    const mesh = new THREE.Mesh(new THREE.SphereGeometry(p.r, 48, 32), new THREE.MeshStandardMaterial({ map: planetTex(p.n), roughness: .9 }));
+    mesh.rotation.order = "ZYX"; mesh.rotation.z = PROFILES[p.n].tilt;       // axial tilt (Uranus lies on its side, Venus is upside-down); spin is then about the tilted axis
     solar.add(mesh);
-    if (p.n === "Saturn") {                                          // Saturn's rings
-      const rg = new THREE.Mesh(new THREE.RingGeometry(p.r * 1.4, p.r * 2.3, 64), new THREE.MeshBasicMaterial({ color: 0xcdb98a, side: THREE.DoubleSide, transparent: true, opacity: .8 }));
-      rg.rotation.x = Math.PI / 2.2; mesh.add(rg);
+    const halo = { Earth: [0x4da6ff, .22], Venus: [0xffd27a, .35], Mars: [0xe9a27a, .12], Pluto: [0x7fa8ff, .12] }[p.n];
+    if (halo) mesh.add(new THREE.Mesh(new THREE.SphereGeometry(p.r * 1.07, 32, 24), new THREE.MeshBasicMaterial({ color: halo[0], transparent: true, opacity: halo[1], side: THREE.BackSide, depthWrite: false })));   // thin atmosphere glow
+    if (p.n === "Saturn") {                                          // Saturn's rings, striped like the real ones (Cassini Division gap)
+      const ri = p.r * 1.35, ro = p.r * 2.4, rg = new THREE.Mesh(new THREE.RingGeometry(ri, ro, 96), new THREE.MeshBasicMaterial({ map: ringTex(), side: THREE.DoubleSide, transparent: true, depthWrite: false }));
+      const uv = rg.geometry.attributes.uv, ps = rg.geometry.attributes.position;
+      for (let k = 0; k < uv.count; k++) uv.setXY(k, (Math.hypot(ps.getX(k), ps.getY(k)) - ri) / (ro - ri), .5);   // u = how far from the inner edge (radial stripes)
+      rg.rotation.x = Math.PI / 2; mesh.add(rg);
     }
     const pts = []; for (let k = 0; k < 128; k++) pts.push(new THREE.Vector3(Math.cos(k / 128 * 6.2832) * rad, 0, Math.sin(k / 128 * 6.2832) * rad));
     const line = new THREE.LineLoop(new THREE.BufferGeometry().setFromPoints(pts), new THREE.LineBasicMaterial({ color: 0x33415f })); solar.add(line);
-    return { mesh, rad, rad0: rad, line, ang: Math.random() * 6.28, r: p.r };
+    return { mesh, rad, rad0: rad, line, ang: Math.random() * 6.28, r: p.r, spin: 4 / PROFILES[p.n].spinH };   // spin rad/s: Earth ~0.17, Venus negative (retrograde)
   });
 
   // Earth's Moon (orbits Earth, not the Sun) and the asteroid belt (a ring of 700 tiny rocks around Ceres' orbit)
@@ -1285,21 +1371,37 @@ function init3D() {
     return lerp(lerp(at(0, 0), at(1, 0), u), lerp(at(0, 1), at(1, 1), u), v);
   }
 
+  // ---- terrain recipes for the real rocky worlds (heights and colours per vertex; uses the pre-computed noise maps) ----
+  const PV = [0, 0, 0, 0];
+  function profileVertex(st, i, ix, iz, a, b, relief) {
+    const x = -SIZE / 2 + ix * STEP, z = -SIZE / 2 + iz * STEP, c = nC[i], rv = nR[i]; let h, R, G, B;
+    if (st === "mercury") { h = a * relief * .25 + c * relief * .8; const g = clamp(.36 + .1 * b + c * .1, .12, .7); R = g * 1.02; G = g * .97; B = g * .92; if (c > .15) { R += .08; G += .08; B += .07; } }      // many deep craters, bright ejecta on the rims
+    else if (st === "ceres") { h = a * relief * .15 + c * relief * .6; const g = clamp(.24 + .07 * b + c * .05, .1, .45); R = G = B = g; if (c < -1.25) { R = .86; G = .86; B = .9; } }                          // bright salt on crater floors
+    else if (st === "venus") { const dome = Math.pow(Math.max(0, b), 2), ch = Math.abs(rv) < .08; h = a * relief * .2 + dome * relief * .55 - (ch ? 1.2 : 0); R = .3 + .06 * a; G = .22 + .04 * a; B = .15; if (ch) { R = .12; G = .1; B = .09; } }   // basalt plains, pancake domes, lava channels
+    else if (st === "mars") { const rip = Math.sin(rv * 14 + b * 3) * .5 + .5; h = a * relief * .5 + rip * relief * .12 + c * relief * .35; R = .62 + .1 * rip; G = .31 + .05 * rip; B = .17; if (b < -.55) { R = .25; G = .15; B = .12; } }   // red dunes, dark basalt patches
+    else {                                                                                                      // pluto
+      const mount = Math.max(0, a - .3); h = a * relief * .1 + mount * relief * 5 + c * relief * .2;           // flat nitrogen-ice plains with water-ice mountains
+      const cell = Math.abs(Math.sin(x * .35)) * Math.abs(Math.sin(z * .35)); R = .88; G = .8; B = .72; if (cell < .06) { R = .62; G = .55; B = .5; }   // polygon convection cells
+      if (b > .6) { R = .5; G = .24; B = .17; } if (mount > .02) { R = .8; G = .78; B = .8; }                   // red tholin stains, pale ice peaks
+    }
+    PV[0] = h; PV[1] = R; PV[2] = G; PV[3] = B;
+  }
   let surfaceDirty = false, baseHemi = .9, stormNow = 0, flashT = 0, curSeaY = -999, curLavaY = -999;
   function buildSurface() {                               // runs at most once per frame, only when a slider changed
     surfaceDirty = false;
-    const { s, r } = lastSR, cls = r.cls, T = r.temp, gf = clamp(s.ghg / 100, 0, 1);
+    const { s, r } = lastSR, prof = activeProfile, cls = prof ? prof.cls : r.cls, T = prof ? prof.T : r.temp, gf = clamp(s.ghg / 100, 0, 1);
     // HEIGHT SCALE: weaker gravity (low mass) lets mountains stand taller, so relief grows as mass falls.
     // WEATHER: cloud cover -> storm (0..1). Humidity (0..1) raises the oceans and thickens the mist.
-    const wx = weather, storm = wx ? Math.pow(clamp(wx.cloud / 100, 0, 1), 1.5) : 0, hum = wx ? clamp(wx.hum / 100, 0, 1) : .5; stormNow = storm;
-    const relief = clamp(9 / Math.pow(s.mass, .35), 3, 16) * (1 + .5 * storm);   // stormy worlds get more dramatic relief
+    const wx = activeProfile ? null : weather, storm = wx ? Math.pow(clamp(wx.cloud / 100, 0, 1), 1.5) : 0, hum = wx ? clamp(wx.hum / 100, 0, 1) : .5; stormNow = storm;
+    const relief = (prof ? prof.relief : clamp(9 / Math.pow(s.mass, .35), 3, 16)) * (1 + .5 * storm);   // stormy worlds get more dramatic relief
     const hot = clamp((T - 320) / 160, 0, 1);              // 0..1: how extreme the heat is (drives trench depth on lava worlds)
     const seaY = cls === "hab" ? -relief * (.2 - (hum - .5) * .5) : -999, lavaY = cls === "lava" ? -relief * .55 : -999;
     curSeaY = seaY; curLavaY = lavaY;
     const pos = tGeo.attributes.position, col = tGeo.attributes.color;
     for (let iz = 0; iz <= SEG; iz++) for (let ix = 0; ix <= SEG; ix++) {       // nested loop: rewrite every vertex height + colour
       const i = iz * (SEG + 1) + ix, a = nA[i], b = nB[i]; let h, R, G, B;
-      if (cls === "ice") {
+      if (prof && prof.style !== "earth") { profileVertex(prof.style, i, ix, iz, a, b, relief); h = PV[0]; R = PV[1]; G = PV[2]; B = PV[3]; }   // a REAL planet: its own terrain recipe
+      else if (cls === "ice") {
         // Crystalline: ridged noise (1-|n|) makes sharp ridges; rounding to 1.4-unit steps cuts flat facets = jagged crystal terraces.
         h = Math.round((Math.pow(1 - Math.abs(a), 2.4) * relief * 1.8) / 1.4) * 1.4 - relief * .4 + b * .5;
         const t = clamp((h + relief * .4) / (relief * 1.4), 0, 1);
@@ -1327,7 +1429,7 @@ function init3D() {
       pos.setY(i, h); col.setXYZ(i, R, G, B);
     }
     pos.needsUpdate = col.needsUpdate = true; tGeo.computeVertexNormals();
-    const wantFlat = cls === "ice"; if (tMat.flatShading !== wantFlat) { tMat.flatShading = wantFlat; tMat.needsUpdate = true; }   // faceted look for crystals
+    const wantFlat = cls === "ice" && !prof; if (tMat.flatShading !== wantFlat) { tMat.flatShading = wantFlat; tMat.needsUpdate = true; }   // faceted look for crystals
 
     // Liquids: water at sea level (tinted green by methane-rich atmospheres); lava glows at the trench level
     water.visible = cls === "hab"; water.position.y = seaY; waterMat.color.setRGB(.12 - .05 * gf, .44 + .2 * gf, .88 - .4 * gf);
@@ -1350,6 +1452,7 @@ function init3D() {
     // Flora / crystals / boulders placed on the new ground
     const mat = flora.material; mat.color.setHex(cls === "ice" ? 0x7fffff : cls === "lava" ? 0x2a1410 : cls === "rock" ? 0x6b6b6b : 0x2f9e44);
     mat.emissive.setHex(cls === "ice" ? 0x1a8fb0 : cls === "lava" ? 0x551000 : 0x000000);
+    if (prof && prof.rockCol !== undefined) { mat.color.setHex(prof.rockCol); mat.emissive.setHex(0x000000); }
     const dm = new THREE.Object3D();
     for (let k = 0; k < FL; k++) {
       const y = groundY(fx[k], fz[k]), ok = cls === "hab" ? y > seaY + 1 : cls === "lava" ? y > lavaY + 1.5 : true;
@@ -1358,6 +1461,12 @@ function init3D() {
       dm.rotation.set(0, fr[k] * 6, cls === "rock" ? fr[k] : 0); dm.updateMatrix(); flora.setMatrixAt(k, dm.matrix);
     }
     flora.instanceMatrix.needsUpdate = true;
+    if (prof && prof.env) {                                // real sky, fog and sunlight for this world (distance from the Sun sets the Sun's size and brightness)
+      const e = prof.env, fc = e.fogCol || e.sky;
+      scene.background.setRGB(e.sky[0], e.sky[1], e.sky[2]); scene.fog.color.setRGB(fc[0], fc[1], fc[2]); scene.fog.density = e.fog; starPts.visible = e.stars; deck.visible = false;
+      hemi.color.setRGB(e.hemi[0], e.hemi[1], e.hemi[2]); hemi.groundColor.setRGB(e.hemi[0] * .4, e.hemi[1] * .4, e.hemi[2] * .4); baseHemi = e.hemiI; hemi.intensity = baseHemi;
+      sun.intensity = clamp(1.5 / prof.au, .5, 3.4); sunSprite.scale.setScalar(clamp(50 / Math.pow(prof.au, .8), 5, 140)); stormNow = 0;
+    }
     reseatProps();                                        // keep the lander, flag and samples sitting on the NEW ground
   }
 
@@ -1365,7 +1474,7 @@ function init3D() {
   const keys = {}, me = { x: 0, y: 0, z: 0, vy: 0, yaw: 0, pitch: -.08, ground: true }; let lookDrag = null, hudT = 0;
   addEventListener("keydown", e => { if ((flight.phase !== "surface" && flight.phase !== "walk" && flight.phase !== "cabin" && flight.phase !== "cave") || /INPUT|SELECT|TEXTAREA/.test(e.target.tagName)) return; keys[e.code] = true; if (e.code === "Space" || e.code.startsWith("Arrow")) e.preventDefault(); });
   addEventListener("keyup", e => keys[e.code] = false);
-  renderer.domElement.addEventListener("pointerdown", e => { if (["surface", "cabin", "cave", "descent"].includes(flight.phase)) lookDrag = [e.clientX, e.clientY]; });
+  renderer.domElement.addEventListener("pointerdown", e => { if (["surface", "cabin", "cave", "descent", "dive"].includes(flight.phase)) lookDrag = [e.clientX, e.clientY]; });
   addEventListener("pointerup", () => { lookDrag = null; keys.Walk = false; });
   addEventListener("pointermove", e => { if (!lookDrag) return; me.yaw -= (e.clientX - lookDrag[0]) * .004; me.pitch = clamp(me.pitch - (e.clientY - lookDrag[1]) * .004, -1.4, 1.4); lookDrag = [e.clientX, e.clientY]; });
   $("walkBtn").addEventListener("pointerdown", e => { e.stopPropagation(); keys.Walk = true; });
@@ -1377,7 +1486,7 @@ function init3D() {
     if (holo.on) exitHolo();
     if (flight.phase !== "orbit" || mode !== "lab" || !lastSR) return;
     if (lastSR.r.cls === "gas") { say("This is a gas giant, so there is no solid ground to land on. Lower the mass below eight Earth masses and try again!", true); return; }
-    walk.oxygen = 100; landObj = planet; landRad = planet.scale.x; landedFromWalk = false; beginPlunge(); return;
+    walk.oxygen = 100; activeProfile = null; landObj = planet; landRad = planet.scale.x; landedFromWalk = false; beginPlunge(); return;
   }
   function beginPlunge() {                                // shared by the LAND button and by docking from a space walk
     isSurfaceMode = true; flight.phase = "plunge"; flight.t = 0;
@@ -1393,7 +1502,7 @@ function init3D() {
     beginDescent();                                       // powered descent -> touchdown -> astronaut exits -> explore
   }
   function leaveSurfaceVisuals() {
-    surface.visible = false; scene.fog = null; scene.background.setHex(0x02030a); starPts.visible = true;
+    activeProfile = null; surface.visible = false; scene.fog = null; scene.background.setHex(0x02030a); starPts.visible = true;
     labObjs.forEach(o => o.visible = true); star.visible = glow.visible = true; starLightObj.visible = true;
     camera.fov = 50; camera.updateProjectionMatrix(); camera.rotation.order = "XYZ";
     document.body.classList.remove("surface", "fp"); cave.g.visible = false; ambient.intensity = .5; $("xenoCard").hidden = true; clearInterval(typeTimer); clearTimeout(logTimer);
@@ -1440,6 +1549,8 @@ function init3D() {
       descentFrame(dt);
     } else if (flight.phase === "cave") {
       caveFrame(dt);
+    } else if (flight.phase === "dive") {
+      diveFrame(dt);
     } else if (flight.phase === "walk") {
       walkFrame(dt);
     } else if (flight.phase === "surface") {
@@ -1682,10 +1793,13 @@ function init3D() {
   }
 
   // ---- World setup ----
-  const dry = y => lastSR.r.cls === "hab" ? y > curSeaY + 1 : lastSR.r.cls === "lava" ? y > curLavaY + 3 : true;
+  const gNow = () => activeProfile ? activeProfile.g / 9.81 : Math.pow(lastSR.s.mass, .46);       // surface gravity in Earth g: real for real planets
+  const worldCls = () => activeProfile ? activeProfile.cls : worldCls(), worldK = () => activeProfile ? activeProfile.T : worldK(), worldLabel = () => activeProfile ? activeProfile.name : worldLabel();
+  const cavCls = () => (activeProfile && activeProfile.caveCls) || worldCls(), caveNote = () => (activeProfile && activeProfile.cave) || CAVESCI[worldCls()] || CAVESCI.rock;
+  const dry = y => worldCls() === "hab" ? y > curSeaY + 1 : worldCls() === "lava" ? y > curLavaY + 3 : true;
   const ent = { x: 0, z: 0 };
   function setupWorld() {
-    const cls = lastSR.r.cls; let best = null, bs = 1e9;
+    const cls = worldCls(); let best = null, bs = 1e9;
     for (let x = -50; x <= 50; x += 5) for (let z = -50; z <= 50; z += 5) {            // flattest dry spot near the middle
       const y = groundY(x, z); if (!dry(y)) continue;
       const score = (Math.abs(groundY(x + 3, z) - y) + Math.abs(groundY(x, z + 3) - y)) * 3 + Math.hypot(x, z) * .02; if (score < bs) { bs = score; best = { x, z }; }
@@ -1749,7 +1863,7 @@ function init3D() {
   let scrT = 0;
   function descentFrame(dt) {
     dt = Math.min(dt, .05); if (surfaceDirty) buildSurface();
-    const grav = Math.pow(lastSR.s.mass, .46), gy = groundY(site.x, site.z), U = landerG.userData;
+    const grav = gNow(), gy = groundY(site.x, site.z), U = landerG.userData;
     if (flight.phase === "descent" && !dsc.landed) {
       dsc.t += dt; dsc.v = .9 + Math.sqrt(2 * (3 + 3 * grav) * Math.max(dsc.h - 1, 0));   // v(h) = v_touch + sqrt(2 a (h - h0))
       dsc.h = Math.max(0, dsc.h - dsc.v * dt); dsc.fuel = Math.max(0, 100 - dsc.t * 4);
@@ -1762,6 +1876,7 @@ function init3D() {
       flight.phase = "cabin"; toast("Unbuckle: walk around the cabin with W A S D. At the hatch (the open side on the right) press E to start the airlock.", 8000); say("Walk to the hatch and start the airlock.");
     }
     landerG.position.set(site.x, gy + dsc.h, site.z); dsc.ang += dt * .12;
+    if (flight.phase === "cabin") props.suit = Math.min(100, props.suit + 25 * dt);   // the cabin is pressurised and cool: the suit recovers
     if (cab.airlock >= 0 && cab.airlock < 1) {             // airlock cycle: 3.5 s with a flashing red light
       cab.airlock = Math.min(1, cab.airlock + dt / 3.5); U.cabLight.color.setHex(Math.sin(clock.elapsedTime * 14) > 0 ? 0xff2a2a : 0xfff0d8);
       if (cab.airlock >= 1) { U.cabLight.color.setHex(0xfff0d8); toast("Airlock cycled. Hatch opening. Walk to the opening and press E to climb down.", 6000); }
@@ -1787,7 +1902,7 @@ function init3D() {
     const atHatch = cab.x > 1.6 && Math.abs(cab.z) < 1.4;
     if ((scrT += dt) > .2) {                               // live cockpit screens + HUD text (5 times a second)
       scrT = 0; const [m, l, r] = U.scr;
-      m.userData.write(dsc.landed ? ["SYSTEMS NOMINAL", `O2 ${Math.round(walk.oxygen)}%`, `OUTSIDE ${Math.round(lastSR.r.temp - 273)} C`, `GRAV ${grav.toFixed(2)} g`] : ["POWERED DESCENT", `ALT ${dsc.h.toFixed(0)} m`, `RATE ${dsc.v.toFixed(1)} m/s`, `FUEL ${dsc.fuel.toFixed(0)}%`]);
+      m.userData.write(dsc.landed ? ["SYSTEMS NOMINAL", `O2 ${Math.round(walk.oxygen)}%`, `OUTSIDE ${Math.round(worldK() - 273)} C`, `GRAV ${grav.toFixed(2)} g`] : ["POWERED DESCENT", `ALT ${dsc.h.toFixed(0)} m`, `RATE ${dsc.v.toFixed(1)} m/s`, `FUEL ${dsc.fuel.toFixed(0)}%`]);
       l.userData.write(["ENGINE", dsc.landed ? "OFF" : "BURN", `T+ ${dsc.t.toFixed(0)} s`]); r.userData.write(["HATCH", cab.door > .9 ? "OPEN" : cab.airlock >= 0 && cab.airlock < 1 ? "CYCLING" : "SEALED", `AIR ${Math.round((1 - Math.min(1, cab.airlock < 0 ? 0 : cab.airlock)) * 100)}%`]);
       let txt;
       if (flight.phase === "descent") txt = dsc.landed ? "🛬 Touchdown! Settling…" : `🛬 POWERED DESCENT<br>Altitude ${dsc.h.toFixed(0)} m · Descent ${dsc.v.toFixed(1)} m/s · Fuel ${dsc.fuel.toFixed(0)}%<br><small>Drag to look out of the window · C: outside camera</small>`;
@@ -1804,7 +1919,7 @@ function init3D() {
   };
   let sHud = 0;
   function surfaceFrame(dt) {
-    dt = Math.min(dt, .05); const grav = Math.pow(lastSR.s.mass, .46);
+    dt = Math.min(dt, .05); const grav = gNow();
     const fwd = (keys.KeyW || keys.Walk ? 1 : 0) - (keys.KeyS ? 1 : 0) + (keys.ArrowUp ? 1 : 0) - (keys.ArrowDown ? 1 : 0), side = (keys.KeyD ? 1 : 0) - (keys.KeyA ? 1 : 0);
     me.yaw += ((keys.ArrowLeft ? 1 : 0) - (keys.ArrowRight ? 1 : 0)) * 1.6 * dt;
     const spd = (keys.ShiftLeft ? 9 : 4.5) / Math.pow(grav, .3) * dt, px = me.x, pz = me.z;
@@ -1813,8 +1928,8 @@ function init3D() {
     const dx = me.x - site.x, dz = me.z - site.z, dl = Math.hypot(dx, dz);
     if (dl < LR) { me.x = site.x + dx / (dl || 1) * LR; me.z = site.z + dz / (dl || 1) * LR; }   // the lander is solid
     const moved = Math.hypot(me.x - px, me.z - pz), floor = groundY(me.x, me.z) + 1.8;
-    if (me.ground && (keys.Space || keys.Jump)) { me.vy = 6; me.ground = false; } keys.Jump = false;
-    const vyBefore = me.vy; me.vy -= 14 * grav * dt; me.y += me.vy * dt;
+    if (me.ground && (keys.Space || keys.Jump)) { me.vy = 3.4; me.ground = false; } keys.Jump = false;
+    const vyBefore = me.vy; me.vy -= 9.81 * grav * dt; me.y += me.vy * dt;
     if (me.y <= floor) { if (!me.ground && vyBefore < -3) emitDust(me.x, floor - 1.8, me.z, 6, 3, 1); me.y = floor; me.vy = 0; me.ground = true; }
     const gnd = floor - 1.8, wet = (curSeaY > -900 && gnd < curSeaY) || (curLavaY > -900 && gnd < curLavaY + .4);
     if (me.ground && moved > 0) {
@@ -1832,7 +1947,9 @@ function init3D() {
     }
     camera.rotation.set(me.pitch, me.yaw, 0);
     if (curLavaY > -900 && gnd < curLavaY + .5) props.suit -= 30 * dt;
-    if (props.suit <= 0) { props.suit = 100; Object.assign(me, { x: site.x + 6.5, z: site.z, vy: 0 }); me.y = groundY(me.x, me.z) + 1.8; toast("⚠️ Suit breach! Emergency recall to the lander."); }
+    if (activeProfile && activeProfile.hz) props.suit -= activeProfile.hz * dt;       // Venus, Mercury and Pluto slowly wear your suit down
+    if (props.suit <= 0 && activeProfile && activeProfile.hz) { props.suit = 100; toast("☠️ Suit failure from the extreme conditions! Emergency launch."); startReturn(true); }
+    else if (props.suit <= 0) { props.suit = 100; Object.assign(me, { x: site.x + 6.5, z: site.z, vy: 0 }); me.y = groundY(me.x, me.z) + 1.8; toast("⚠️ Suit breach! Emergency recall to the lander."); }
     walk.oxygen = Math.max(0, walk.oxygen - .05 * dt);
     if (walk.oxygen <= 0 && !props.recall) { props.recall = true; toast("Oxygen empty. Automatic recall to orbit."); startReturn(true); }
     for (const sm of samples) if (!sm.taken) { sm.mesh.position.y = sm.base + Math.sin(clock.elapsedTime * 2 + sm.ph) * .12; sm.mesh.rotation.y += dt; }
@@ -1841,12 +1958,12 @@ function init3D() {
       sHud = 0; let near = 1e9; for (const sm of samples) if (!sm.taken) near = Math.min(near, Math.hypot(sm.mesh.position.x - me.x, sm.mesh.position.z - me.z));
       const dg = Math.hypot(ent.x - me.x, ent.z - me.z), dLad = Math.hypot(site.x + 3.9 - me.x, site.z - me.z);
       const prompt = near < 3.6 ? "E: collect sample" : dLad < 3.4 ? "E: climb aboard the lander" : dg < 3.6 ? "E: enter the cave" : mission.flag ? "" : "F: plant flag";
-      $("hud").innerHTML = `🧭 ${lastSR.r.label} · 🌡️ ${Math.round(lastSR.r.temp - 273)} °C · ⬇ ${grav.toFixed(2)} g<br>🎒 Samples ${mission.samples}/${NSAMP} · 🚩 ${mission.flag ? "planted" : "not yet"} · 🕳️ Cave ${mission.cave ? "explored" : Math.round(dg) + " m " + arrowTo(ent.x, ent.z)}<br>🛰️ Lander ${Math.round(dl)} m ${arrowTo(site.x, site.z)} · 🫁 O₂ ${Math.round(walk.oxygen)}% · 🦺 Suit ${Math.round(props.suit)}%<br><small>${prompt}${prompt ? " · " : ""}WASD walk · Shift run · Space jump · V camera</small>`;
+      $("hud").innerHTML = `🧭 ${worldLabel()} · 🌡️ ${Math.round(worldK() - 273)} °C · ⬇ ${grav.toFixed(2)} g<br>🎒 Samples ${mission.samples}/${NSAMP} · 🚩 ${mission.flag ? "planted" : "not yet"} · 🕳️ Cave ${mission.cave ? "explored" : Math.round(dg) + " m " + arrowTo(ent.x, ent.z)}<br>🛰️ Lander ${Math.round(dl)} m ${arrowTo(site.x, site.z)} · 🫁 O₂ ${Math.round(walk.oxygen)}% · 🦺 Suit ${Math.round(props.suit)}%${activeProfile && activeProfile.hz ? ` · ☠️ ${Math.round(props.suit / activeProfile.hz)} s left` : ""}<br><small>${prompt}${prompt ? " · " : ""}WASD walk · Shift run · Space jump · V camera</small>`;
     }
   }
   function collect(sm) {
     sm.taken = true; sm.mesh.visible = false; mission.samples++; emitDust(sm.mesh.position.x, sm.base - .45, sm.mesh.position.z, 8, 2.5, 2);
-    const cls = lastSR.r.cls, [name, note] = SCI[cls] || SCI.rock, dens = (({ hab: 1.2, ice: .95, lava: 2.9, rock: 1.6 })[cls] || 1.5) * (1 + .12 * Math.log(lastSR.s.mass));
+    const cls = worldCls(), [name, note] = (activeProfile && activeProfile.sample) || SCI[cls] || SCI.rock, dens = activeProfile ? activeProfile.dens : (({ hab: 1.2, ice: .95, lava: 2.9, rock: 1.6 })[cls] || 1.5) * (1 + .12 * Math.log(lastSR.s.mass));
     toast(`🧪 Sample ${mission.samples}/${NSAMP}: ${name}. Bulk density ${dens.toFixed(2)} g/cm³: ${note}.`, 6500); missionCheck();
   }
   function missionCheck() { if (!mission.done && mission.samples === NSAMP && mission.flag) { mission.done = true; toast("🏆 Mission complete! Climb back aboard the lander (E at the ladder) and launch.", 7000); say("Mission complete! Climb back aboard and launch."); } }
@@ -1902,15 +2019,15 @@ function init3D() {
     art.position.copy(end).addScaledVector(cave.up[CS], -cave.rad[CS] + 1.8); cave.g.add(art); cave.items.push(art); cave.art = art; cave.deep = false; cave.y0 = cave.cent[0].y;
   }
   function caveLog() {
-    const r = lastSR.r, T = Math.round(r.temp - 273) + ({ lava: 40, ice: -15, hab: -8, rock: -10 }[r.cls] || 0);
-    const kind = { hab: "limestone cave with damp, mossy floors", ice: "glacier cave with glowing ice crystals", lava: "lava tube with a glowing stream of magma", rock: "dry, dark rock tunnel" }[r.cls] || "tunnel";
+    const cc = cavCls(), T = Math.round(worldK() - 273) + ({ lava: 40, ice: -15, hab: -8, rock: -10 }[cc] || 0);
+    const kind = { hab: "limestone cave with damp, mossy floors", ice: "glacier cave with glowing ice crystals", lava: "lava tube with a glowing stream of magma", rock: "dry, dark rock tunnel" }[cc] || "tunnel";
     return `>> SUBSURFACE LOG // ENTRY\n>> A ${kind}.\n>> Temperature underground: ${T} °C.\n>> The tunnel winds ~${Math.round(cave.len)} m and slopes downward. A chamber waits at the far end.\n>> Headlamp ON. Mind your oxygen.\n\n[GOAL] Reach the deep chamber and collect the glowing geode (E).\n>> END OF ENTRY`;
   }
   function enterCave() {
     if (flight.phase !== "surface") return;
     flight.phase = "flash"; $("flash").style.opacity = 1;
     setTimeout(() => {
-      buildCave(lastSR.r.cls); surface.visible = false; cave.g.visible = true; starPts.visible = false; ambient.intensity = .12; astro.g.visible = false;
+      buildCave(cavCls()); surface.visible = false; cave.g.visible = true; starPts.visible = false; ambient.intensity = .12; astro.g.visible = false;
       scene.background.setHex(0x000000); if (!scene.fog) scene.fog = new THREE.FogExp2(0, .045); scene.fog.color.setHex(0); scene.fog.density = .045;
       cave.u = .01; cave.lat = 0; me.yaw = 0; me.pitch = 0; flight.phase = "cave"; $("flash").style.opacity = 0; typeLog(caveLog());
       toast("Cave entered. W/S walk along the tunnel, A/D sidestep, drag to look around. E near the entrance exits.", 6500); say("Entering the cave. Your headlamp is on.");
@@ -1937,11 +2054,11 @@ function init3D() {
     cA.addScaledVector(cB, cave.lat).addScaledVector(cC, 1.7 - rad + Math.sin(cave.t * 8) * .03 * Math.abs(fwd));            // eye = centre + side*lat + up*(1.7 - radius)
     camera.position.copy(cA).add(cave.g.position); camera.rotation.set(me.pitch, me.yaw, 0);
     headlamp.position.copy(cA).addScaledVector(cC, .3);
-    cave.lights.forEach((l, i) => { if (lastSR.r.cls === "lava") l.intensity = 1.3 + .35 * Math.sin(cave.t * 3 + i); });
+    cave.lights.forEach((l, i) => { if (worldCls() === "lava") l.intensity = 1.3 + .35 * Math.sin(cave.t * 3 + i); });
     cave.art.rotation.y += dt; cave.art.position.y += Math.sin(cave.t * 2) * .004;
     const depth = Math.round(cave.y0 - cA.y), dArt = cA.distanceTo(cave.art.position), near = cave.u < .045, pr = near ? "E: exit to the surface" : (!cave.deep && dArt < 4.5) ? "E: collect the geode" : "";
     walk.oxygen = Math.max(0, walk.oxygen - .05 * dt); if (walk.oxygen <= 0) { exitCave(); }
-    if ((sHud += dt) > .25) { sHud = 0; $("hud").innerHTML = `🕳️ CAVE · depth ${depth} m · ${Math.round(cave.u * 100)}% of the way<br>🌡️ ${Math.round(lastSR.r.temp - 273) + ({ lava: 40, ice: -15, hab: -8, rock: -10 }[lastSR.r.cls] || 0)} °C · 💡 headlamp · 🫁 O₂ ${Math.round(walk.oxygen)}%<br><small>${pr}${pr ? " · " : ""}W/S along the tunnel · A/D sidestep · drag to look</small>`; }
+    if ((sHud += dt) > .25) { sHud = 0; $("hud").innerHTML = `🕳️ CAVE · depth ${depth} m · ${Math.round(cave.u * 100)}% of the way<br>🌡️ ${Math.round(worldK() - 273) + ({ lava: 40, ice: -15, hab: -8, rock: -10 }[worldCls()] || 0)} °C · 💡 headlamp · 🫁 O₂ ${Math.round(walk.oxygen)}%<br><small>${pr}${pr ? " · " : ""}W/S along the tunnel · A/D sidestep · drag to look</small>`; }
   }
 
   // ---- keys for exploring, cabin and caves ----
@@ -1955,7 +2072,7 @@ function init3D() {
     }
     if (ph === "cave" && e.code === "KeyE") {
       if (cave.u < .045) exitCave();
-      else if (!cave.deep && cameraNearArt()) { cave.deep = true; cave.art.visible = false; mission.cave = true; toast(`🧪 Geode collected! ${CAVESCI[lastSR.r.cls] || CAVESCI.rock}`, 9000); say("Geode collected. " + (CAVESCI[lastSR.r.cls] || CAVESCI.rock)); }
+      else if (!cave.deep && cameraNearArt()) { cave.deep = true; cave.art.visible = false; mission.cave = true; toast(`🧪 Geode collected! ${caveNote()}`, 9000); say("Geode collected. " + caveNote()); }
     }
     if (ph !== "surface") return;
     if (e.code === "KeyV") props.third = !props.third;
@@ -1970,7 +2087,7 @@ function init3D() {
       const fx = me.x - Math.sin(me.yaw) * 1.5, fz = me.z - Math.cos(me.yaw) * 1.5, fy = groundY(fx, fz);
       if ((curSeaY > -900 && fy < curSeaY) || (curLavaY > -900 && fy < curLavaY + .5)) { toast("You can't plant a flag in liquid."); return; }
       flag.position.set(fx, fy, fz); flag.rotation.y = me.yaw; flag.visible = true; mission.flag = true; emitDust(fx, fy, fz, 8, 2, 1.5);
-      toast(`🚩 Flag planted! The first footsteps on this ${lastSR.r.label.toLowerCase()}.`); missionCheck();
+      toast(`🚩 Flag planted! The first footsteps on this ${worldLabel().toLowerCase()}.`); missionCheck();
     }
   });
   const cameraNearArt = () => camera.position.distanceTo(cave.art.position.clone().add(cave.g.position)) < 4.5;
@@ -1999,10 +2116,77 @@ function init3D() {
     b.userData.write([t.name.toUpperCase(), (d / UNITS_PER_AU).toFixed(2) + " AU", (closing >= 0 ? "CLOSING " : "RECEDING ") + Math.abs(closing).toFixed(2)]);
     c.userData.write(["O2 " + Math.round(walk.oxygen) + "%", "DOCK " + (walk.dock >= 0 ? PLANETS[walk.dock].n : "none"), "B: LEAVE SHIP"]);
   }
-  hooks.landDebug = () => ({ phase: flight.phase, h: +dsc.h.toFixed(1), landed: dsc.landed, mission: { ...mission }, cab: { x: +cab.x.toFixed(2), z: +cab.z.toFixed(2), airlock: +cab.airlock.toFixed(2), door: +cab.door.toFixed(2) }, boarded: props.boarded, site: { ...site }, ent: { ...ent }, me: { x: +me.x.toFixed(2), z: +me.z.toFixed(2) }, s0: samples[0].mesh.position.toArray(), cu: +cave.u.toFixed(3), deep: cave.deep, ship: ship.on, cockpitVisible: cockpit.g.visible });
+  hooks.landDebug = () => ({ phase: flight.phase, h: +dsc.h.toFixed(1), landed: dsc.landed, mission: { ...mission }, cab: { x: +cab.x.toFixed(2), z: +cab.z.toFixed(2), airlock: +cab.airlock.toFixed(2), door: +cab.door.toFixed(2) }, boarded: props.boarded, site: { ...site }, ent: { ...ent }, me: { x: +me.x.toFixed(2), z: +me.z.toFixed(2) }, s0: samples[0].mesh.position.toArray(), cu: +cave.u.toFixed(3), deep: cave.deep, ship: ship.on, cockpitVisible: cockpit.g.visible, prof: activeProfile && activeProfile.name, g: +gNow().toFixed(3) });
   hooks.landTP = (x, z) => { me.x = x; me.z = z; me.y = groundY(x, z) + 1.8; };
   hooks.cabTP = (x, z) => { cab.x = x; cab.z = z; };
   hooks.caveU = u => { cave.u = u; };
+
+  /* =====================================================================
+     ATMOSPHERIC PROBE DIVE (gas and ice giants have no surface)
+     Pressure grows exponentially as you fall:  P = 0.1 bar * exp(depth / H)   (H = scale height, e.g. 27 km on Jupiter)
+     Temperature follows an adiabat:            T = T1 * P^0.286              (T1 = temperature at 1 bar)
+     The probe is crushed at Pc bar, so the maximum depth is  H * ln(Pc / 0.1).  The fall is time-compressed to ~75 s.
+     ===================================================================== */
+  const dive = { g: new THREE.Group(), name: "", depth: 0, t: 0, flash: 0, lay: [], so: new Float32Array(140 * 3), light: new THREE.PointLight(0xaaccff, 0, 500) };
+  dive.g.visible = false; scene.add(dive.g); dive.g.add(dive.light);
+  const diveTex = deckTex.clone(); diveTex.needsUpdate = true; diveTex.wrapS = diveTex.wrapT = THREE.RepeatWrapping; diveTex.repeat.set(3, 3);
+  for (let k = 0; k < 12; k++) { const m = new THREE.Mesh(new THREE.PlaneGeometry(800, 800).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ map: diveTex, transparent: true, opacity: .55, depthWrite: false, side: THREE.DoubleSide })); m.position.y = -k * 64; dive.g.add(m); dive.lay.push(m); }
+  const stPos = new Float32Array(140 * 6), stGeo = new THREE.BufferGeometry(); stGeo.setAttribute("position", new THREE.BufferAttribute(stPos, 3));
+  const stLines = new THREE.LineSegments(stGeo, new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: .35 })); stLines.frustumCulled = false; dive.g.add(stLines);
+  for (let k = 0; k < 140; k++) { dive.so[k * 3] = (Math.random() - .5) * 120; dive.so[k * 3 + 1] = (Math.random() - .5) * 60; dive.so[k * 3 + 2] = (Math.random() - .5) * 120; }
+  const diveCrush = D => D.H * Math.log(D.Pc / .1);
+  function diveLog(D) {
+    return `>> ${D.name.toUpperCase()} // ATMOSPHERIC PROBE (real planetary data)\n>> Gravity at the cloud tops: ${D.g} m/s² (${(D.g / 9.81).toFixed(2)} g). Winds up to ~${D.wind} m/s.\n>> Pressure rises with depth. Our probe will be crushed at about ${D.Pc} bar, after falling ~${Math.round(diveCrush(D))} km (time-compressed to about a minute).\n\n[NOTE] ${D.note}\n\n[CONTROLS] Drag to look around. E aborts and returns to orbit.\n>> END OF LOG`;
+  }
+  function startDive(i) {
+    const D = PROFILES[PLANETS[i].n]; if (flight.phase !== "walk" && flight.phase !== "orbit") return;
+    landObj = sol[i].mesh; landRad = sol[i].r; landedFromWalk = true; walkUI(false); setTabUI("lab"); mode = "lab";
+    flight.phase = "flash"; $("flash").style.opacity = 1; $("landBtn").disabled = true; $("landBtn").textContent = "🌀 PROBE DIVE…";
+    setTimeout(() => {
+      labObjs.forEach(o => o.visible = false); solar.visible = false; star.visible = glow.visible = false; starLightObj.visible = false; starPts.visible = false;
+      dive.name = PLANETS[i].n; dive.depth = 0; dive.t = 0; dive.g.visible = true; document.body.classList.add("surface");
+      scene.background.setRGB(D.top[0], D.top[1], D.top[2]); if (!scene.fog) scene.fog = new THREE.FogExp2(0, .004); scene.fog.color.setRGB(D.top[0], D.top[1], D.top[2]); scene.fog.density = .004;
+      camera.fov = 75; camera.updateProjectionMatrix(); camera.rotation.order = "YXZ"; me.yaw = 0; me.pitch = -.15;
+      flight.phase = "dive"; $("flash").style.opacity = 0; $("xenoCard").hidden = false; typeLog(diveLog(D)); toast(`Probe released into ${D.name}. Watch the pressure climb. E aborts.`, 6000); say(`Probe released into ${D.name}.`);
+    }, 380);
+  }
+  function endDive(crushed) {
+    if (flight.phase !== "dive") return; const D = PROFILES[dive.name]; flight.phase = "flash"; $("flash").style.opacity = 1;
+    setTimeout(() => {
+      dive.g.visible = false; scene.fog = null; scene.background.setHex(0x02030a); starPts.visible = true; solar.visible = true; star.visible = glow.visible = true; starLightObj.visible = true;
+      document.body.classList.remove("surface", "fp"); $("xenoCard").hidden = true; clearInterval(typeTimer);
+      tmp.copy(landObj.position).normalize(); camera.position.copy(landObj.position).addScaledVector(tmp, landRad * 3 + 2);   // park beside the planet again
+      resumeWalk(); $("flash").style.opacity = 0;
+      toast(crushed ? `📡 Probe crushed at ${D.Pc} bar. ${D.note}` : `Probe recovered. ${D.note}`, 9000); say(crushed ? "Signal lost. The pressure crushed the probe." : "Probe recovered.");
+    }, 380);
+  }
+  function diveFrame(dt) {
+    dt = Math.min(dt, .05); const D = PROFILES[dive.name], crush = diveCrush(D); dive.t += dt;
+    dive.depth = Math.min(crush, dive.depth + crush / 75 * dt); const f = dive.depth / crush;
+    const P = .1 * Math.exp(dive.depth / D.H), T = D.T1 * Math.pow(P, .286), wind = D.wind * (.6 + .4 * Math.sin(dive.t * .7)) * (.5 + f);
+    const cy = -dive.depth * 2.4;                                                        // 1 km = 2.4 scene units
+    camera.position.set(Math.sin(dive.t * .5) * 2, cy + Math.sin(dive.t * 1.3) * .6, Math.cos(dive.t * .4) * 2); camera.rotation.set(me.pitch, me.yaw, Math.sin(dive.t * .8) * .04);
+    const col = D.top.map((c, k) => lerp(c, D.bot[k], Math.pow(f, .7)));                 // sky darkens and reddens with depth
+    scene.background.setRGB(col[0], col[1], col[2]); scene.fog.color.setRGB(col[0], col[1], col[2]); scene.fog.density = .004 + .02 * f;
+    dive.lay.forEach((m, k) => { m.material.color.setRGB(Math.min(1, col[0] * 1.3), Math.min(1, col[1] * 1.3), Math.min(1, col[2] * 1.3)); }); diveTex.offset.x += dt * wind * .0004;
+    for (let k = 0; k < 140; k++) {                                                      // wind streaks: short lines racing past the probe
+      dive.so[k * 3] += wind * dt * .5; if (dive.so[k * 3] > 60) dive.so[k * 3] -= 120;
+      const x = camera.position.x + dive.so[k * 3], y = cy + dive.so[k * 3 + 1], z = camera.position.z + dive.so[k * 3 + 2], len = 2 + wind * .03;
+      stPos[k * 6] = x; stPos[k * 6 + 1] = y; stPos[k * 6 + 2] = z; stPos[k * 6 + 3] = x - len; stPos[k * 6 + 4] = y; stPos[k * 6 + 5] = z;
+    }
+    stGeo.attributes.position.needsUpdate = true;
+    if (f > .25 && dive.flash <= 0 && Math.random() < .004) dive.flash = .15;           // lightning in the deep water clouds
+    dive.flash = Math.max(0, dive.flash - dt); dive.light.position.set(camera.position.x + 20, cy + 10, camera.position.z - 30); dive.light.intensity = dive.flash > 0 ? 8 : 0;
+    if (dive.flash > 0) scene.background.setRGB(Math.min(1, col[0] + .5), Math.min(1, col[1] + .5), Math.min(1, col[2] + .6));
+    if (f >= 1) { endDive(true); return; }
+    if ((sHud += dt) > .25) {
+      sHud = 0; const layer = D.layers.filter(l => P >= l[0]).pop()[1];
+      $("hud").innerHTML = `🌀 ATMOSPHERIC PROBE · ${D.name}<br>Depth ${dive.depth.toFixed(0)} km · Pressure ${P.toFixed(2)} bar · ${Math.round(T - 273)} °C<br>Wind ${Math.round(wind)} m/s · ${layer}<br>Probe integrity ${Math.max(0, Math.round(100 - 100 * Math.pow(f, 3)))}%<br><small>Drag to look · E aborts</small>`;
+    }
+  }
+  addEventListener("keydown", e => { if (flight.phase === "dive" && e.code === "KeyE" && !e.repeat) endDive(false); });
+  hooks.profileNote = () => { const t = performance.now(); if (t - (hooks._pn || 0) > 9000) { hooks._pn = t; toast("Real planets keep their real values. Return to orbit to experiment with the sliders."); } };
+  hooks.dock = dockAndLand;
 
   /* =====================================================================
      FIRST-PERSON ASTRONAUT SPACE WALK
@@ -2071,8 +2255,9 @@ function init3D() {
   function dockAndLand(i) {                                 // E pressed while Orbit Locked
     const p = PLANETS[i];
     $("distance").value = p.au; $("mass").value = p.m; $("ghg").value = p.g; nova.moved = true; update();   // the Lab now describes THIS world
-    if (lastSR.r.cls === "gas") { say(`${p.n} is a gas giant, so there is no solid ground to land on.`, true); return; }
-    landObj = sol[i].mesh; landRad = sol[i].r; landedFromWalk = true;
+    const prof = PROFILES[p.n];
+    if (prof.type === "giant") { startDive(i); return; }       // gas and ice giants: an atmospheric probe dive instead of a landing
+    activeProfile = prof; landObj = sol[i].mesh; landRad = sol[i].r; landedFromWalk = true;
     walkUI(false); setTabUI("lab"); mode = "lab";             // sidebar shows the Lab (surface log, return button); the 3D scene stays in solar view for the dive
     beginPlunge();                                            // same cinematic dive as the LAND button, but into the planet we docked with
   }
@@ -2119,7 +2304,7 @@ function init3D() {
     }
     if (dockI !== walk.dock) {                                                         // docking state changed
       walk.dock = dockI;
-      if (dockI >= 0) say(lastSR && ["Jupiter", "Saturn", "Uranus", "Neptune"].includes(PLANETS[dockI].n) ? `${PLANETS[dockI].n} is a gas giant.` : `Orbit locked around ${PLANETS[dockI].n}. Press E to land.`);
+      if (dockI >= 0) say(lastSR && ["Jupiter", "Saturn", "Uranus", "Neptune"].includes(PLANETS[dockI].n) ? `${PLANETS[dockI].n} is a gas giant. Press E for a probe dive.` : `Orbit locked around ${PLANETS[dockI].n}. Press E to land.`);
     }
     camera.rotation.set(walk.pitch, walk.yaw, 0);
 
@@ -2131,7 +2316,7 @@ function init3D() {
       eRet.classList.toggle("lock", !!lock);
       if (walk.dock >= 0) {
         const gas = ["Jupiter", "Saturn", "Uranus", "Neptune"].includes(PLANETS[walk.dock].n);
-        eAlert.style.display = "block"; eAlert.textContent = gas ? `Gas giant detected (${PLANETS[walk.dock].n}). No solid surface to land on.` : "Orbit Locked. Press 'E' to establish planetary landing protocol.";
+        eAlert.style.display = "block"; eAlert.textContent = gas ? `Gas giant (${PLANETS[walk.dock].n}). Press 'E' to launch an atmospheric probe dive.` : "Orbit Locked. Press 'E' to establish planetary landing protocol.";
       } else eAlert.style.display = walk.fuel <= 0 ? "block" : "none", eAlert.textContent = walk.fuel <= 0 ? "Jetpack empty. You are drifting: dock with a planet to refuel." : "";
       $("vO2").textContent = Math.round(walk.oxygen); $("vO2bar").style.width = walk.oxygen + "%";
       $("vFuel").textContent = Math.round(walk.fuel); $("vFuelbar").style.width = walk.fuel + "%";
@@ -2202,7 +2387,7 @@ function init3D() {
     glow.material.color.setRGB(starCur.gr, starCur.gg, starCur.gb); glow.material.opacity = Math.min(1, starCur.gl);
     const gs = 4 + 9 * Math.pow(Math.max(.1, starCur.s), .8); glow.scale.set(gs, gs, 1);
     // Solar System: inner planets orbit faster (Kepler's third law, simplified)
-    sol.forEach(p => { p.ang += .012 / Math.pow(p.rad / 5, 1.5); p.mesh.position.set(Math.cos(p.ang) * p.rad, 0, Math.sin(p.ang) * p.rad); p.mesh.rotation.y += .01; });
+    sol.forEach(p => { p.ang += .012 / Math.pow(p.rad / 5, 1.5); p.mesh.position.set(Math.cos(p.ang) * p.rad, 0, Math.sin(p.ang) * p.rad); p.mesh.rotation.y += p.spin / 60; });
     moons.forEach(m => { m.ang += m.sp; m.mesh.position.set(m.host.mesh.position.x + Math.cos(m.ang) * m.d, 0, m.host.mesh.position.z + Math.sin(m.ang) * m.d); });
     star.rotation.y += .0015;
     angle += Math.min(.05, .006 / Math.pow(Math.max(.1, (orbitR - 3) / 5), 1.5));   // Kepler-ish: closer = faster
