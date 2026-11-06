@@ -113,6 +113,15 @@
   body.fp #visor { display:block; }
   #hud { max-width:350px; }
   body.ship #visor { display:none; }
+  .agrid { display:grid; grid-template-columns:repeat(auto-fill,minmax(84px,1fr)); gap:8px; margin-bottom:12px; }
+  .ab { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:8px 4px; text-align:center; font-size:.7rem; line-height:1.3; }
+  .ab .ic { font-size:1.5rem; display:block; } .ab.off { opacity:.4; filter:grayscale(1); } .ab.on { border-color:var(--accent); }
+  .chips { display:flex; gap:6px; margin:6px 0 10px; } .chips button { padding:4px 10px; border-radius:999px; border:1px solid var(--line); background:var(--card); color:var(--text); font-size:.75rem; cursor:pointer; } .chips button.on { background:var(--accent); color:var(--bg); border-color:var(--accent); }
+  .news a { color:var(--accent); font-weight:600; text-decoration:none; } .news .it { padding:9px 0; border-bottom:1px solid var(--line); font-size:.82rem; line-height:1.45; } .news .it:last-child { border:0; } .news small { color:var(--muted); display:block; }
+  .tag2 { display:inline-block; font-size:.65rem; font-weight:700; padding:1px 7px; border-radius:99px; margin-right:6px; background:#1d3b5a; color:#9fd8ff; } .tag2.ISRO { background:#5a3a1d; color:#ffcf9f; }
+  .dot { display:inline-block; min-width:16px; padding:0 4px; margin-left:4px; border-radius:99px; background:#ff5a5a; color:#fff; font-size:.65rem; line-height:16px; }
+  #ach { position:fixed; top:14px; left:50%; transform:translate(-50%,-140%); z-index:90; background:linear-gradient(135deg,#2a2150,#0f3a4a); border:1px solid #ffd166; color:#fff; padding:10px 18px; border-radius:14px; text-align:center; font-size:.9rem; line-height:1.4; transition:transform .45s; box-shadow:0 0 24px rgba(255,209,102,.4); max-width:90%; pointer-events:none; }
+  #ach.show { transform:translate(-50%,0); }
   #nova { position:absolute; left:14px; bottom:14px; right:14px; max-width:430px; display:flex; gap:10px; align-items:flex-end; z-index:6; pointer-events:none; }
   #nova > * { pointer-events:auto; }
   #novaFace { width:54px; height:54px; flex:none; border-radius:50%; position:relative; background:radial-gradient(circle at 35% 30%,#b8fff0,#4de0c0 60%,#2aa58f); box-shadow:0 0 18px rgba(77,224,192,.55); animation:novaFloat 3s ease-in-out infinite; }
@@ -145,11 +154,12 @@
   <div class="feat"><div>🧪<br>Build planets</div><div>🤖<br>See the AI decide</div><div>🎯<br>Missions and quiz</div></div>
   <button class="start" id="startBtn">Start exploring 🚀</button>
 </div></div>
+<div id="ach" role="status"></div>
 <aside>
   <div style="display:flex;justify-content:space-between;align-items:center"><h1>ExoMind 3D</h1><button class="tbtn" id="themeBtn" aria-label="Switch light or dark theme">☀️</button></div>
   <p class="tag">The AI Exoplanet Laboratory</p>
   <div class="tabs">
-    <button class="on" data-tab="lab">🧪 Lab</button><button data-tab="solar">🪐 Planets</button><button data-tab="stars">⭐ Stars</button><button data-tab="quiz">🎯 Quiz</button><button data-tab="help">❓ Help</button>
+    <button class="on" data-tab="lab">🧪 Lab</button><button data-tab="solar">🪐 Planets</button><button data-tab="stars">⭐ Stars</button><button data-tab="quiz">🎯 Quiz</button><button data-tab="help">❓ Help</button><button data-tab="space" id="spaceTabBtn">🏆 Space</button>
   </div>
   <button class="land deploy" id="deployBtn">👨‍🚀 DEPLOY ASTRONAUT SPACE WALK</button>
   <div class="card" id="vitalsCard" hidden style="margin-bottom:16px">
@@ -228,6 +238,20 @@
   </div>
 
   <div class="tab" id="tab-quiz"><h2>🎯 SPACE QUIZ</h2><div class="card" id="quizBox"></div></div>
+
+  <div class="tab" id="tab-space">
+    <h2>🏆 YOUR ACHIEVEMENTS <span id="achCount"></span></h2><div class="agrid" id="achGrid"></div>
+    <h2>🛂 PLANET PASSPORT <span id="stampCount"></span></h2><div class="agrid" id="passport"></div>
+    <h2>📡 LIVE SPACE NEWS · NASA · ISRO</h2>
+    <div class="card news"><div class="chips" id="newsChips"><button data-f="all" class="on">All</button><button data-f="NASA">NASA</button><button data-f="ISRO">ISRO</button></div>
+      <div id="newsList">Loading…</div><p class="legend" id="newsStatus"></p><button class="btn" id="newsRefresh">↻ Refresh</button></div>
+    <h2>🚀 UPCOMING LAUNCHES</h2><div class="card news" id="launchList">Loading…</div>
+    <h2>☀️ SPACE WEATHER RIGHT NOW</h2><div class="card news" id="wxBox">Loading…</div>
+    <h2>🛰️ ISS RIGHT NOW</h2><div class="card news" id="issBox">Loading…</div>
+    <h2>📷 NASA PICTURE OF THE DAY</h2><div class="card news" id="apodBox">Loading…</div>
+    <h2>⏳ ON THIS DAY · MILESTONES</h2><div class="card news"><div id="todayBox"></div><div class="chips" id="mileChips"><button data-f="all" class="on">All</button><button data-f="ISRO">ISRO</button><button data-f="NASA">NASA</button></div><div id="mileList"></div></div>
+    <div class="legend">Official sources: <a href="https://www.nasa.gov/news/" target="_blank" rel="noopener" style="color:var(--accent)">nasa.gov</a> · <a href="https://www.isro.gov.in/" target="_blank" rel="noopener" style="color:var(--accent)">isro.gov.in</a> · <a href="https://www.esa.int/" target="_blank" rel="noopener" style="color:var(--accent)">esa.int</a>. Live panels need internet; always check the official sites for confirmed facts.</div>
+  </div>
 
   <div class="tab" id="tab-help">
     <h2>❓ DOUBT-CLEARING HELPER</h2>
@@ -489,7 +513,7 @@ function checkMission(s, r) {                 // runs on every slider move
   const m = MISSIONS[curMission];
   $("missionGoal").textContent = "🎯 " + m.d;
   if (nova.moved && m.goal(s, r)) {          // only counts after the student has actually moved a slider or clicked a preset
-    if (!done.has(curMission)) { done.add(curMission); refreshMissionMenu(); clearTimeout(nova.t); say("Mission complete! Great job! " + m.why); }
+    if (!done.has(curMission)) { done.add(curMission); refreshMissionMenu(); award("mission"); if (done.size === MISSIONS.length) award("allmissions"); clearTimeout(nova.t); say("Mission complete! Great job! " + m.why); }
     $("missionStatus").textContent = "✅ Mission complete! " + m.why;
   } else {
     $("missionStatus").textContent = `Not yet. Right now: ${r.label} (${r.score}%).`;
@@ -594,7 +618,7 @@ function applyWeather(w) {
   const frozen = w.snow || w.T <= 0;                  // freezing or snowing city -> ice-sheet planet
   const ghg = frozen ? 4 : Math.round(Math.min(100, Math.max(0, 10 + (w.T - 10) * 2.2)));   // hot city -> greenhouse spike (10 C ~ 10%, 40 C ~ 76%)
   const dist = frozen ? 2.6 : 1.15;                   // otherwise a cosy Earth-like orbit; the cloud and humidity values shape the surface
-  weather = w; nova.moved = true; $("distance").value = dist; $("ghg").value = ghg;
+  weather = w; nova.moved = true; award("weather"); $("distance").value = dist; $("ghg").value = ghg;
   $("wxStatus").textContent = `📍 ${w.name}: ${w.T} °C · clouds ${w.cloud}% · humidity ${w.hum}%${w.snow ? " · snow" : ""}${w.simulated ? " (offline demo data)" : ""}  →  greenhouse ${ghg}%, orbit ${dist} AU${w.cloud > 60 ? ", stormy skies" : ""}.`;
   update();
   say(`Synthesizing an alien planet from the weather in ${w.name}. ${w.T} degrees, ${w.cloud} percent clouds. Press land to walk on it.`);
@@ -620,6 +644,123 @@ function setTabUI(name) {                       // switch the sidebar tab WITHOU
   document.querySelector(`.tabs button[data-tab="${name}"]`).classList.add("on"); $("tab-" + name).classList.add("on");
 }
 
+/* ---------- ACHIEVEMENTS, PASSPORT, LIVE SPACE NEWS (NASA, ISRO) ---------- */
+const ACH = [
+  ["first", "🚀", "First Contact", "Start exploring ExoMind."], ["tinker", "🎛️", "Tinkerer", "Move the sliders 30 times."], ["hab", "🌍", "Habitable Hunter", "Build a habitable planet (score 90%+)."],
+  ["lava", "🌋", "Lava Maker", "Create a lava wasteland."], ["ice", "🧊", "Ice Maker", "Create a frozen world."], ["builder", "🧪", "World Builder", "Create all 5 kinds of planet."],
+  ["weather", "🌦️", "Earth Bridge", "Sync a city's weather."], ["holo", "🔮", "Hologram Maker", "Switch on the holographic prism."], ["mission", "🎯", "Mission Accepted", "Finish a Lab mission."],
+  ["allmissions", "🏅", "Mission Master", "Finish all 9 Lab missions."], ["quizplay", "📝", "Quiz Taker", "Finish a quiz round."], ["quiz", "🧠", "Quiz Master", "Score 9 or 10 in a quiz round."],
+  ["walker", "👨‍🚀", "Space Walker", "Deploy the astronaut."], ["ship", "🛸", "Ship Pilot", "Board the ship cockpit."], ["dock", "🔗", "Docking Pilot", "Dock with a planet."],
+  ["touchdown", "🛬", "Touchdown!", "Land safely on a world."], ["steps", "👣", "First Steps", "Climb down the ladder and step outside."], ["sample1", "🪨", "Rock Hound", "Collect your first sample."],
+  ["samples", "🎒", "Sample Collector", "Collect all 5 samples."], ["flag", "🚩", "Flag Planter", "Plant a flag."], ["complete", "🏆", "Mission Complete", "5 samples and the flag on one world."],
+  ["cave", "🕳️", "Cave Explorer", "Enter a cave."], ["geode", "💎", "Deep Discovery", "Collect the geode in a cave chamber."], ["diver", "🌀", "Probe Diver", "Dive into a giant planet."],
+  ["crush", "📡", "To the Limit", "Ride a probe until it is crushed."], ["venus", "🔥", "Venus Survivor", "Survive 100 seconds on Venus."], ["stamps3", "🛂", "Frequent Flyer", "Collect 3 passport stamps."],
+  ["grandtour", "🪐", "Grand Tour", "Collect all 10 passport stamps."], ["reader", "📡", "Space Reader", "Open the news feed."]
+].map(([id, i, t, d]) => ({ id, i, t, d }));
+const store = { get(k, d) { try { const v = JSON.parse(localStorage.getItem("exomind-" + k)); return v === null ? d : v; } catch (e) { return d; } }, set(k, v) { try { localStorage.setItem("exomind-" + k, JSON.stringify(v)); } catch (e) {} } };
+let got = store.get("ach", {}), stamps = store.get("passport", {}), made = store.get("made", {}), moves = 0;
+const PEMOJI = { Mercury: "⚫", Venus: "🟡", Earth: "🌍", Mars: "🔴", Ceres: "🪨", Jupiter: "🟠", Saturn: "🪐", Uranus: "🩵", Neptune: "🔵", Pluto: "🤍" };
+function showAch(a) {
+  const el = $("ach"); el.innerHTML = `<b>${a.head || "🏆 Achievement unlocked!"}</b><br>${a.i} ${a.t}<br><small>${a.d}</small>`; el.classList.add("show");
+  clearTimeout(showAch.t); showAch.t = setTimeout(() => el.classList.remove("show"), 5200); say(`${a.head ? "" : "Achievement unlocked: "}${a.t}.`);
+}
+function award(id) {                                   // call from anywhere: unlocks a badge once, remembers it, shows a pop-up
+  if (got[id]) return; const a = ACH.find(x => x.id === id); if (!a) return;
+  got[id] = Date.now(); store.set("ach", got); showAch(a); renderAch();
+}
+function stamp(name) {                                 // a passport stamp for each world you visit
+  if (stamps[name]) return; stamps[name] = Date.now(); store.set("passport", stamps); renderPassport();
+  showAch({ head: "🛂 Passport stamped!", i: PEMOJI[name] || "🪐", t: name, d: "First visit recorded." });
+  const n = Object.keys(stamps).length; if (n >= 3) award("stamps3"); if (n >= 10) award("grandtour");
+}
+function trackWorld(s, r) {                            // called on every slider change: counts moves and planet types
+  if (++moves >= 30) award("tinker");
+  if (r.cls === "hab" && r.score >= 90) award("hab"); if (r.cls === "lava") award("lava"); if (r.cls === "ice") award("ice");
+  if (!made[r.cls]) { made[r.cls] = 1; store.set("made", made); if (Object.keys(made).length >= 5) award("builder"); }
+}
+function renderAch() {
+  $("achGrid").innerHTML = ACH.map(a => `<div class="ab ${got[a.id] ? "on" : "off"}" title="${a.d}"><span class="ic">${a.i}</span>${a.t}</div>`).join(""); $("achCount").textContent = `(${Object.keys(got).length}/${ACH.length})`;
+}
+function renderPassport() {
+  const names = Object.keys(PEMOJI); $("passport").innerHTML = names.map(n => `<div class="ab ${stamps[n] ? "on" : "off"}" title="${stamps[n] ? "Visited " + new Date(stamps[n]).toLocaleDateString() : "Not visited yet"}"><span class="ic">${PEMOJI[n]}</span>${n}</div>`).join(""); $("stampCount").textContent = `(${Object.keys(stamps).filter(k => PEMOJI[k]).length}/10)`;
+}
+const MILE = [
+  { m: 4, d: 19, y: 1975, a: "ISRO", t: "Aryabhata, India's first satellite, launched", n: "Built in India and launched on a Soviet rocket." },
+  { m: 10, d: 22, y: 2008, a: "ISRO", t: "Chandrayaan-1 launched to the Moon", n: "India's first Moon mission. Its instruments helped confirm water molecules on the lunar surface." },
+  { m: 9, d: 24, y: 2014, a: "ISRO", t: "Mangalyaan reached Mars orbit", n: "India became the first Asian nation to reach Mars orbit, and the first country to succeed on its first attempt." },
+  { m: 2, d: 15, y: 2017, a: "ISRO", t: "PSLV-C37 launched 104 satellites in one flight", n: "A world record at the time." },
+  { m: 8, d: 23, y: 2023, a: "ISRO", t: "Chandrayaan-3 landed near the Moon's south pole", n: "India became the 4th country to land on the Moon and the first to land near the south pole." },
+  { m: 9, d: 2, y: 2023, a: "ISRO", t: "Aditya-L1 launched to study the Sun", n: "India's first solar observatory. It reached its orbit around the L1 point in January 2024." },
+  { m: 1, d: 16, y: 2025, a: "ISRO", t: "SpaDeX satellites docked in orbit", n: "India became the 4th country to achieve space docking." },
+  { m: 6, d: 25, y: 2025, a: "ISRO", t: "Shubhanshu Shukla flew to the ISS on Axiom-4", n: "He became the first Indian astronaut to visit the International Space Station." },
+  { m: 10, d: 1, y: 1958, a: "NASA", t: "NASA began operations", n: "Created to lead America's civil space programme." },
+  { m: 11, d: 20, y: 1998, a: "NASA", t: "First ISS module, Zarya, launched", n: "The International Space Station is built by NASA, Roscosmos, ESA, JAXA and CSA." },
+  { m: 7, d: 20, y: 1969, a: "NASA", t: "Apollo 11: first humans on the Moon", n: "Neil Armstrong and Buzz Aldrin walked on the surface." },
+  { m: 9, d: 5, y: 1977, a: "NASA", t: "Voyager 1 launched", n: "In 2012 it became the first spacecraft to enter interstellar space." },
+  { m: 4, d: 24, y: 1990, a: "NASA", t: "Hubble Space Telescope launched", n: "Its images changed our view of the universe." },
+  { m: 8, d: 6, y: 2012, a: "NASA", t: "Curiosity rover landed on Mars", n: "It found that Mars once had conditions that could support microbial life." },
+  { m: 7, d: 14, y: 2015, a: "NASA", t: "New Horizons flew past Pluto", n: "It revealed Pluto's ice plains, mountains and blue haze." },
+  { m: 4, d: 19, y: 2021, a: "NASA", t: "Ingenuity made the first powered flight on another planet", n: "The little helicopter flew on Mars." },
+  { m: 12, d: 25, y: 2021, a: "NASA", t: "James Webb Space Telescope launched", n: "It sees the universe in infrared. Its first full-colour images came in July 2022." },
+  { m: 9, d: 26, y: 2022, a: "NASA", t: "DART hit the asteroid Dimorphos", n: "The first test of changing an asteroid's path. It shortened the asteroid's orbit by about 32 minutes." },
+  { m: 9, d: 24, y: 2023, a: "NASA", t: "OSIRIS-REx delivered samples of asteroid Bennu", n: "Samples of an ancient asteroid reached Earth." },
+  { m: 12, d: 24, y: 2024, a: "NASA", t: "Parker Solar Probe flew closest to the Sun", n: "About 6 million km from the surface, the nearest any spacecraft has come." }
+];
+let mileF = "all", newsF = "all", newsItems = [];
+const MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+function mk(tag, text, cls) { const e = document.createElement(tag); if (text) e.textContent = text; if (cls) e.className = cls; return e; }
+function renderMile() {
+  const now = new Date(), today = MILE.filter(x => x.m === now.getMonth() + 1 && x.d === now.getDate());
+  const nxt = [...MILE].map(x => ({ ...x, k: ((x.m - 1) * 31 + x.d - ((now.getMonth()) * 31 + now.getDate()) + 372) % 372 })).sort((a, b) => a.k - b.k)[0];
+  $("todayBox").innerHTML = ""; $("todayBox").appendChild(mk("div", today.length ? "🎉 On this day in space:" : `Next anniversary: ${MON[nxt.m - 1]} ${nxt.d}`, "")); (today.length ? today : [nxt]).forEach(x => $("todayBox").appendChild(mk("div", `${x.y}: ${x.t}. ${x.n}`, "it")));
+  const list = $("mileList"); list.innerHTML = "";
+  MILE.filter(x => mileF === "all" || x.a === mileF).sort((a, b) => b.y - a.y).forEach(x => { const d = mk("div", "", "it"); d.appendChild(mk("span", x.a, "tag2 " + x.a)); d.appendChild(mk("b", `${x.y} · ${x.t}`)); d.appendChild(mk("small", x.n)); list.appendChild(d); });
+}
+function renderNews() {
+  const box = $("newsList"); box.innerHTML = ""; const items = newsItems.filter(i => newsF === "all" || i.tag === newsF);
+  if (!items.length) { box.textContent = "No live news to show. Showing the milestone timeline below instead."; return; }
+  items.forEach(i => { const d = mk("div", "", "it"), a = mk("a", i.title); a.href = i.url; a.target = "_blank"; a.rel = "noopener"; d.appendChild(mk("span", i.tag, "tag2 " + i.tag)); d.appendChild(a); d.appendChild(mk("small", `${i.site} · ${new Date(i.date).toLocaleDateString()}`)); if (i.summary) d.appendChild(mk("div", i.summary.slice(0, 150) + (i.summary.length > 150 ? "…" : ""))); box.appendChild(d); });
+}
+const SRC = { nasa: "https://api.spaceflightnewsapi.net/v4/articles/?limit=8&ordering=-published_at&news_site=NASA", isro: "https://api.spaceflightnewsapi.net/v4/articles/?limit=8&ordering=-published_at&search=ISRO",
+  lisro: "https://ll.thespacedevs.com/2.2.0/launch/upcoming/?limit=4&lsp__name=Indian%20Space%20Research%20Organisation", lnasa: "https://ll.thespacedevs.com/2.2.0/launch/upcoming/?limit=4&lsp__name=National%20Aeronautics%20and%20Space%20Administration",
+  apod: "https://api.nasa.gov/planetary/apod?api_key=DEMO_KEY", iss: "https://api.wheretheiss.at/v1/satellites/25544", wx: "https://services.swpc.noaa.gov/products/noaa-scales.json" };
+async function cached(key, url, ttlMin) {              // reuse a saved answer for ttlMin minutes (these free APIs have rate limits)
+  const c = store.get("c_" + key, null); if (c && Date.now() - c.t < ttlMin * 60000) return c.v;
+  const v = await getJSON(url); store.set("c_" + key, { t: Date.now(), v }); return v;
+}
+async function loadNews() {
+  const [a, b] = await Promise.allSettled([cached("nasa", SRC.nasa, 20), cached("isro", SRC.isro, 20)]);
+  const pick = (r, tag) => r.status === "fulfilled" && r.value && r.value.results ? r.value.results.map(x => ({ id: x.id, title: x.title, url: x.url, site: x.news_site, date: x.published_at, summary: x.summary || "", tag })) : [];
+  newsItems = [...pick(a, "NASA"), ...pick(b, "ISRO")].sort((x, y) => new Date(y.date) - new Date(x.date));
+  $("newsStatus").textContent = newsItems.length ? `Updated ${new Date().toLocaleTimeString()} · source: Spaceflight News API` : "Live news could not be loaded (offline or blocked). The milestone timeline below always works.";
+  renderNews();
+  const seen = store.get("seen", []), fresh = newsItems.filter(i => !seen.includes(i.id)).length;
+  const btn = $("spaceTabBtn"); btn.innerHTML = "🏆 Space" + (fresh ? ` <span class="dot">${fresh}</span>` : "");
+  if (fresh && !loadNews.told) { loadNews.told = true; showAch({ head: "📡 New space updates", i: "🛰️", t: `${fresh} new stories from NASA and ISRO`, d: "Open the 🏆 Space tab to read them." }); }
+}
+async function loadLaunches() {
+  const box = $("launchList"); const [a, b] = await Promise.allSettled([cached("lisro", SRC.lisro, 40), cached("lnasa", SRC.lnasa, 40)]); box.innerHTML = "";
+  const rows = [["ISRO", a], ["NASA", b]].flatMap(([tag, r]) => r.status === "fulfilled" && r.value && r.value.results ? r.value.results.map(x => ({ tag, name: x.name, net: x.net, st: x.status && x.status.name })) : []).sort((x, y) => new Date(x.net) - new Date(y.net));
+  if (!rows.length) { box.textContent = "Launch schedule unavailable (offline or blocked)."; return; }
+  rows.forEach(x => { const d = mk("div", "", "it"); d.appendChild(mk("span", x.tag, "tag2 " + x.tag)); d.appendChild(mk("b", x.name)); d.appendChild(mk("small", `${new Date(x.net).toLocaleString()} · ${x.st || "scheduled"}`)); box.appendChild(d); });
+}
+async function loadExtras() {
+  const [w, i, p] = await Promise.allSettled([cached("wx", SRC.wx, 15), getJSON(SRC.iss), cached("apod", SRC.apod, 120)]);
+  const wb = $("wxBox"); wb.innerHTML = ""; try { const c = w.value["0"], row = (n, o) => mk("div", `${n}: level ${o.Scale} (${o.Text || "none"})`, "it"); wb.append(row("Geomagnetic storms (G)", c.G), row("Solar radiation storms (S)", c.S), row("Radio blackouts (R)", c.R)); wb.appendChild(mk("small", "Source: NOAA Space Weather Prediction Center. Level 0 means quiet.")); } catch (e) { wb.textContent = "Space weather unavailable (offline or blocked)."; }
+  const ib = $("issBox"); ib.innerHTML = ""; try { const v = i.value; ib.appendChild(mk("div", `Latitude ${v.latitude.toFixed(1)}° · Longitude ${v.longitude.toFixed(1)}°`, "it")); ib.appendChild(mk("div", `Altitude ${v.altitude.toFixed(0)} km · Speed ${Math.round(v.velocity).toLocaleString()} km/h · ${v.visibility}`, "it")); } catch (e) { ib.textContent = "ISS position unavailable (offline or blocked)."; }
+  const ab = $("apodBox"); ab.innerHTML = ""; try { const v = p.value; ab.appendChild(mk("b", `${v.title} (${v.date})`)); if (v.media_type === "image") { const im = document.createElement("img"); im.src = v.url; im.alt = v.title; im.loading = "lazy"; im.style.cssText = "width:100%;border-radius:8px;margin:8px 0"; ab.appendChild(im); } ab.appendChild(mk("small", (v.explanation || "").slice(0, 260) + "…")); } catch (e) { ab.textContent = "Picture of the day unavailable (offline or blocked)."; }
+}
+function openSpaceTab() {                              // runs when the 🏆 Space tab is opened
+  renderAch(); renderPassport(); renderMile(); loadNews().then(() => { store.set("seen", newsItems.map(i => i.id)); $("spaceTabBtn").textContent = "🏆 Space"; if (newsItems.length) award("reader"); });
+  loadLaunches(); loadExtras();
+}
+document.querySelectorAll("#newsChips button").forEach(b => b.onclick = () => { newsF = b.dataset.f; document.querySelectorAll("#newsChips button").forEach(x => x.classList.toggle("on", x === b)); renderNews(); });
+document.querySelectorAll("#mileChips button").forEach(b => b.onclick = () => { mileF = b.dataset.f; document.querySelectorAll("#mileChips button").forEach(x => x.classList.toggle("on", x === b)); renderMile(); });
+$("newsRefresh").onclick = () => { ["nasa", "isro", "lisro", "lnasa", "apod", "wx"].forEach(k => { try { localStorage.removeItem("exomind-c_" + k); } catch (e) {} }); openSpaceTab(); };
+setInterval(() => { if ($("tab-space").classList.contains("on") && !document.hidden) getJSON(SRC.iss).then(v => { $("issBox").textContent = `🛰️ Latitude ${v.latitude.toFixed(1)}° · Longitude ${v.longitude.toFixed(1)}° · ${Math.round(v.altitude)} km up · ${Math.round(v.velocity).toLocaleString()} km/h`; }).catch(() => {}); }, 10000);
+renderAch(); renderPassport(); renderMile();
+setTimeout(() => loadNews(), 2500);                    // quietly check for new stories shortly after the page loads
+
 /* ---------- NOVA BUTTONS ---------- */
 $("novaMute").onclick = () => {
   nova.on = !nova.on; $("novaMute").textContent = nova.on ? "🔊" : "🔇";
@@ -632,7 +773,7 @@ $("novaSay").onclick = () => {                  // "Explain this" re-reads whate
 };
 
 /* ---------- WELCOME SCREEN + LIGHT/DARK THEME ---------- */
-$("startBtn").onclick = () => { nova.ready = true; say("Hi! I am Nova, your space guide. Try a mission, or tap any tab. I will explain everything. Use the speaker button to mute me."); $("welcome").classList.add("hide"); setTimeout(() => $("welcome").style.display = "none", 450); };
+$("startBtn").onclick = () => { nova.ready = true; award("first"); say("Hi! I am Nova, your space guide. Try a mission, or tap any tab. I will explain everything. Use the speaker button to mute me."); $("welcome").classList.add("hide"); setTimeout(() => $("welcome").style.display = "none", 450); };
 $("startBtn").focus();
 function setTheme(t) {                        // the CSS variables switch with the data-theme attribute on <html>
   document.documentElement.dataset.theme = t; $("themeBtn").textContent = t === "light" ? "🌙" : "☀️";
@@ -651,7 +792,7 @@ function update() {                           // runs on EVERY slider move and p
   }
   nova.lastCls = r.cls;
   checkMission(s, r);
-  lastSR = { s, r };
+  lastSR = { s, r }; if (nova.moved) trackWorld(s, r);
   if (isSurfaceMode && activeProfile && hooks.profileNote) hooks.profileNote();
   if (brain) brain.fire(s, r);                      // every slider move, preset, mission or weather sync sends a pulse through the network
   if (isSurfaceMode) { hooks.markSurface && hooks.markSurface(); scheduleLog(); }   // sliders also reshape the landscape
@@ -676,6 +817,7 @@ const NOVA_TABS = {
   solar: "Welcome to the Solar System! Tap any planet and I will tell you its story.",
   stars: "Stars are born, live and die! Change the mass and the life stage to see what happens.",
   quiz:  "Quiz time! Read the question and pick the best answer.",
+  space: "Here are your achievements and passport stamps, plus the latest news, launches and space weather from NASA, ISRO and other agencies.",
   help:  "Got a doubt? Search for a word, or open a question and I will read the answer."
 };
 function pickVoice() {                          // prefer a friendly female English voice if the device has one
@@ -703,6 +845,7 @@ document.querySelectorAll(".tabs button").forEach(b => b.addEventListener("click
   b.classList.add("on"); $("tab-" + b.dataset.tab).classList.add("on");
   if (isSurfaceMode && b.dataset.tab !== "lab") hooks.exitSurface && hooks.exitSurface();
   if (b.dataset.tab !== "lab") hooks.exitHolo && hooks.exitHolo();   // leave the surface if the student switches tabs
+  if (b.dataset.tab === "space") openSpaceTab();
   if (nova.ready) say(NOVA_TABS[b.dataset.tab]);
   if (["lab", "solar", "stars"].includes(b.dataset.tab)) { mode = b.dataset.tab; hooks.setMode && hooks.setMode(mode); applyStar(); }
 }));
@@ -826,6 +969,7 @@ function showQ() {
   const box = $("quizBox");
   if (qi >= deck.length) {
     box.innerHTML = `<p style="font-size:1.2rem;font-weight:700">Score: ${score} / ${deck.length}</p><p>${score >= 7 ? "Stellar work! 🌟" : score >= 4 ? "Good orbit! Review the Help tab and try again." : "Keep exploring the Lab and Planets tabs, then retry."}</p><button class="btn" id="again">Play again</button>`;
+    award("quizplay"); if (score >= 9) award("quiz");
     $("again").onclick = () => { qi = 0; score = 0; newDeck(); showQ(); }; return;
   }
   const q = deck[qi];
@@ -1632,7 +1776,7 @@ function init3D() {
   }
   function enterHolo() {
     if (flight.phase !== "orbit" || mode !== "lab") { $("holoToggle").checked = false; say("Return to the orbit view in the Lab tab first, then switch the hologram on.", true); return; }
-    holo.on = true; lastAlpha = null; document.body.classList.add("holo");
+    holo.on = true; award("holo"); lastAlpha = null; document.body.classList.add("holo");
     labObjs.forEach(o => o.visible = o === planet); star.visible = glow.visible = false; starPts.visible = false; starLightObj.visible = false;   // only the planet remains
     holoLight.visible = true; scene.background.setHex(0x000000); controls.enabled = false;
     enableOrientation();
@@ -1817,7 +1961,7 @@ function init3D() {
     gate.position.set(ent.x, groundY(ent.x, ent.z), ent.z); gate.rotation.y = Math.atan2(site.x - ent.x, site.z - ent.z); gate.visible = true;
     samples.forEach(sm => { sm.mesh.material.color.setHex(SAMPCOL[cls] || 0xffffff); sm.mesh.material.emissive.setHex(SAMPCOL[cls] || 0xffffff); sm.mesh.material.emissiveIntensity = .55; });
     dust.material.color.setHex(DUSTCOL[cls] || 0x9a8a70); clearPrints(); dL.fill(0);
-    flag.visible = false; Object.assign(mission, { samples: 0, flag: false, cave: false, done: false }); Object.assign(props, { ready: true, third: false, suit: 100, shake: 0, stride: 0, boarded: false });
+    flag.visible = false; Object.assign(mission, { samples: 0, flag: false, cave: false, done: false }); Object.assign(props, { ready: true, venusT: 0, third: false, suit: 100, shake: 0, stride: 0, boarded: false });
     astro.g.visible = false;
   }
   function reseatProps() {                                 // sliders can reshape the ground: keep everything sitting on it
@@ -1855,7 +1999,7 @@ function init3D() {
     if (lad.t >= 1) {
       if (lad.dir > 0) {                                   // down: step onto the ground and start exploring
         Object.assign(me, { x: P[3].x, z: P[3].z, y: groundY(P[3].x, P[3].z) + 1.8, vy: 0, ground: true, pitch: -.05 });
-        flight.phase = "surface"; document.body.classList.add("fp"); $("landBtn").disabled = false; typeLog(xenoLog(lastSR.s, lastSR.r));
+        award("steps"); flight.phase = "surface"; document.body.classList.add("fp"); $("landBtn").disabled = false; typeLog(xenoLog(lastSR.s, lastSR.r));
         toast("Mission: collect 5 rock samples (E) and plant the flag (F). A cave mouth with a cyan beacon is on the map too. V switches camera.", 8000); say("Astronaut on the surface. Collect five samples, plant the flag and find the cave.");
       } else { flight.phase = "cabin"; props.boarded = true; Object.assign(cab, { x: 2.0, z: 0 }); document.body.classList.remove("fp"); toast("Aboard. The hatch seals. Press the RETURN button to launch.", 5000); say("Welcome aboard. Press return to launch."); }
     }
@@ -1870,7 +2014,7 @@ function init3D() {
       const thr = clamp(.35 + dsc.v / 45, .3, 1);
       U.plume.visible = true; U.plume.scale.set(1, thr * (.9 + Math.random() * .25), 1); U.plume.material.opacity = .6 + .3 * thr; U.light.intensity = thr * 6;
       if (dsc.h < 14) emitDust(site.x, gy, site.z, Math.ceil(4 * thr * (1 - dsc.h / 14)), 10 + 6 * thr, 2);
-      if (dsc.h <= 0) { dsc.landed = true; dsc.v = 0; U.plume.visible = false; U.light.intensity = 0; props.shake = 1; emitDust(site.x, gy, site.z, 50, 16, 4); dsc.cam0.copy(camera.position); toast("TOUCHDOWN. Engines off."); say("Touchdown!"); }
+      if (dsc.h <= 0) { dsc.landed = true; dsc.v = 0; U.plume.visible = false; U.light.intensity = 0; props.shake = 1; emitDust(site.x, gy, site.z, 50, 16, 4); dsc.cam0.copy(camera.position); toast("TOUCHDOWN. Engines off."); say("Touchdown!"); award("touchdown"); if (activeProfile) stamp(activeProfile.name); }
     }
     if (flight.phase === "descent" && dsc.landed && (dsc.exitT += dt) > 1.6) {
       flight.phase = "cabin"; toast("Unbuckle: walk around the cabin with W A S D. At the hatch (the open side on the right) press E to start the airlock.", 8000); say("Walk to the hatch and start the airlock.");
@@ -1947,7 +2091,8 @@ function init3D() {
     }
     camera.rotation.set(me.pitch, me.yaw, 0);
     if (curLavaY > -900 && gnd < curLavaY + .5) props.suit -= 30 * dt;
-    if (activeProfile && activeProfile.hz) props.suit -= activeProfile.hz * dt;       // Venus, Mercury and Pluto slowly wear your suit down
+    if (activeProfile && activeProfile.hz) props.suit -= activeProfile.hz * dt;
+    if (activeProfile && activeProfile.name === "Venus" && (props.venusT = (props.venusT || 0) + dt) > 100) award("venus");       // Venus, Mercury and Pluto slowly wear your suit down
     if (props.suit <= 0 && activeProfile && activeProfile.hz) { props.suit = 100; toast("☠️ Suit failure from the extreme conditions! Emergency launch."); startReturn(true); }
     else if (props.suit <= 0) { props.suit = 100; Object.assign(me, { x: site.x + 6.5, z: site.z, vy: 0 }); me.y = groundY(me.x, me.z) + 1.8; toast("⚠️ Suit breach! Emergency recall to the lander."); }
     walk.oxygen = Math.max(0, walk.oxygen - .05 * dt);
@@ -1962,11 +2107,11 @@ function init3D() {
     }
   }
   function collect(sm) {
-    sm.taken = true; sm.mesh.visible = false; mission.samples++; emitDust(sm.mesh.position.x, sm.base - .45, sm.mesh.position.z, 8, 2.5, 2);
+    sm.taken = true; sm.mesh.visible = false; mission.samples++; award("sample1"); if (mission.samples === NSAMP) award("samples"); emitDust(sm.mesh.position.x, sm.base - .45, sm.mesh.position.z, 8, 2.5, 2);
     const cls = worldCls(), [name, note] = (activeProfile && activeProfile.sample) || SCI[cls] || SCI.rock, dens = activeProfile ? activeProfile.dens : (({ hab: 1.2, ice: .95, lava: 2.9, rock: 1.6 })[cls] || 1.5) * (1 + .12 * Math.log(lastSR.s.mass));
     toast(`🧪 Sample ${mission.samples}/${NSAMP}: ${name}. Bulk density ${dens.toFixed(2)} g/cm³: ${note}.`, 6500); missionCheck();
   }
-  function missionCheck() { if (!mission.done && mission.samples === NSAMP && mission.flag) { mission.done = true; toast("🏆 Mission complete! Climb back aboard the lander (E at the ladder) and launch.", 7000); say("Mission complete! Climb back aboard and launch."); } }
+  function missionCheck() { if (!mission.done && mission.samples === NSAMP && mission.flag) { mission.done = true; award("complete"); toast("🏆 Mission complete! Climb back aboard the lander (E at the ladder) and launch.", 7000); say("Mission complete! Climb back aboard and launch."); } }
 
   // ---- PHASE 3: caves ----
   const CS = 160, CR = 14;
@@ -2029,7 +2174,7 @@ function init3D() {
     setTimeout(() => {
       buildCave(cavCls()); surface.visible = false; cave.g.visible = true; starPts.visible = false; ambient.intensity = .12; astro.g.visible = false;
       scene.background.setHex(0x000000); if (!scene.fog) scene.fog = new THREE.FogExp2(0, .045); scene.fog.color.setHex(0); scene.fog.density = .045;
-      cave.u = .01; cave.lat = 0; me.yaw = 0; me.pitch = 0; flight.phase = "cave"; $("flash").style.opacity = 0; typeLog(caveLog());
+      cave.u = .01; cave.lat = 0; me.yaw = 0; me.pitch = 0; flight.phase = "cave"; award("cave"); $("flash").style.opacity = 0; typeLog(caveLog());
       toast("Cave entered. W/S walk along the tunnel, A/D sidestep, drag to look around. E near the entrance exits.", 6500); say("Entering the cave. Your headlamp is on.");
     }, 380);
   }
@@ -2072,7 +2217,7 @@ function init3D() {
     }
     if (ph === "cave" && e.code === "KeyE") {
       if (cave.u < .045) exitCave();
-      else if (!cave.deep && cameraNearArt()) { cave.deep = true; cave.art.visible = false; mission.cave = true; toast(`🧪 Geode collected! ${caveNote()}`, 9000); say("Geode collected. " + caveNote()); }
+      else if (!cave.deep && cameraNearArt()) { cave.deep = true; cave.art.visible = false; mission.cave = true; award("geode"); toast(`🧪 Geode collected! ${caveNote()}`, 9000); say("Geode collected. " + caveNote()); }
     }
     if (ph !== "surface") return;
     if (e.code === "KeyV") props.third = !props.third;
@@ -2086,7 +2231,7 @@ function init3D() {
     if (e.code === "KeyF" && !mission.flag) {
       const fx = me.x - Math.sin(me.yaw) * 1.5, fz = me.z - Math.cos(me.yaw) * 1.5, fy = groundY(fx, fz);
       if ((curSeaY > -900 && fy < curSeaY) || (curLavaY > -900 && fy < curLavaY + .5)) { toast("You can't plant a flag in liquid."); return; }
-      flag.position.set(fx, fy, fz); flag.rotation.y = me.yaw; flag.visible = true; mission.flag = true; emitDust(fx, fy, fz, 8, 2, 1.5);
+      flag.position.set(fx, fy, fz); flag.rotation.y = me.yaw; flag.visible = true; mission.flag = true; award("flag"); emitDust(fx, fy, fz, 8, 2, 1.5);
       toast(`🚩 Flag planted! The first footsteps on this ${worldLabel().toLowerCase()}.`); missionCheck();
     }
   });
@@ -2108,7 +2253,7 @@ function init3D() {
   function setShip(on) {
     if (on === ship.on) return; ship.on = on; cockpit.g.visible = on; document.body.classList.toggle("ship", on);
     $("shipBtn").textContent = on ? "👨‍🚀 LEAVE SHIP (back to spacewalk)" : "🚀 BOARD SHIP (cockpit view)";
-    if (on) say("Boarding the ship. Bigger engines and a longer-lasting fuel supply.");
+    if (on) { award("ship"); say("Boarding the ship. Bigger engines and a longer-lasting fuel supply."); }
   }
   function shipScreens(speed, t, d, closing) {
     const [a, b, c] = cockpit.scr;
@@ -2147,11 +2292,11 @@ function init3D() {
       dive.name = PLANETS[i].n; dive.depth = 0; dive.t = 0; dive.g.visible = true; document.body.classList.add("surface");
       scene.background.setRGB(D.top[0], D.top[1], D.top[2]); if (!scene.fog) scene.fog = new THREE.FogExp2(0, .004); scene.fog.color.setRGB(D.top[0], D.top[1], D.top[2]); scene.fog.density = .004;
       camera.fov = 75; camera.updateProjectionMatrix(); camera.rotation.order = "YXZ"; me.yaw = 0; me.pitch = -.15;
-      flight.phase = "dive"; $("flash").style.opacity = 0; $("xenoCard").hidden = false; typeLog(diveLog(D)); toast(`Probe released into ${D.name}. Watch the pressure climb. E aborts.`, 6000); say(`Probe released into ${D.name}.`);
+      flight.phase = "dive"; award("diver"); $("flash").style.opacity = 0; $("xenoCard").hidden = false; typeLog(diveLog(D)); toast(`Probe released into ${D.name}. Watch the pressure climb. E aborts.`, 6000); say(`Probe released into ${D.name}.`);
     }, 380);
   }
   function endDive(crushed) {
-    if (flight.phase !== "dive") return; const D = PROFILES[dive.name]; flight.phase = "flash"; $("flash").style.opacity = 1;
+    if (flight.phase !== "dive") return; const D = PROFILES[dive.name]; if (crushed) award("crush"); if (crushed || dive.depth > diveCrush(D) * .4) stamp(dive.name); flight.phase = "flash"; $("flash").style.opacity = 1;
     setTimeout(() => {
       dive.g.visible = false; scene.fog = null; scene.background.setHex(0x02030a); starPts.visible = true; solar.visible = true; star.visible = glow.visible = true; starLightObj.visible = true;
       document.body.classList.remove("surface", "fp"); $("xenoCard").hidden = true; clearInterval(typeTimer);
@@ -2243,7 +2388,7 @@ function init3D() {
     const ep = new THREE.Vector3(tmp.x * e.rad, 0, tmp.z * e.rad);
     camera.position.copy(ep).addScaledVector(tmp, 4).y += 1.2;                          // spawn 4 units beyond Earth, a little above
     faceTowards(ep.sub(camera.position)); walk.vel.set(0, 0, 0); walk.fuel = 100; walk.oxygen = 100; walk.dock = -1;
-    walkUI(true); if (renderer.domElement.requestPointerLock) { try { renderer.domElement.requestPointerLock(); } catch (er) {} }
+    award("walker"); walkUI(true); if (renderer.domElement.requestPointerLock) { try { renderer.domElement.requestPointerLock(); } catch (er) {} }
     say("Astronaut deployed. Use W A S D to fly and Space and Shift to go up and down. Press E when the dock alert appears.");
   }
   function endWalk() {
@@ -2255,7 +2400,7 @@ function init3D() {
   function dockAndLand(i) {                                 // E pressed while Orbit Locked
     const p = PLANETS[i];
     $("distance").value = p.au; $("mass").value = p.m; $("ghg").value = p.g; nova.moved = true; update();   // the Lab now describes THIS world
-    const prof = PROFILES[p.n];
+    const prof = PROFILES[p.n]; award("dock");
     if (prof.type === "giant") { startDive(i); return; }       // gas and ice giants: an atmospheric probe dive instead of a landing
     activeProfile = prof; landObj = sol[i].mesh; landRad = sol[i].r; landedFromWalk = true;
     walkUI(false); setTabUI("lab"); mode = "lab";             // sidebar shows the Lab (surface log, return button); the 3D scene stays in solar view for the dive
